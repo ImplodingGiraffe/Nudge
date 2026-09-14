@@ -1,7 +1,7 @@
 import { readKey } from './config'
 import { getNotePlainLines, getNoteTitleAndExcerpt, isJsonNote } from '../notes'
 
-export const PRIMARY_TITLER_MODEL = 'gemini-3.7-flash'
+export const PRIMARY_TITLER_MODEL = 'gemini-3.8-flash'
 export const FALLBACK_TITLER_MODEL = 'gemini-3.5-flash-lite'
 
 export interface AutoTitleResult {

@@ -2,12 +2,12 @@ const KEY_STORAGE = 'nudge.ai.key.v1'
 const PREFS_STORAGE = 'nudge.ai.prefs.v1'
 export const MODEL_STORAGE = 'nudge.ai.model.v1'
 
-export const PRIMARY_MODEL = 'gemini-3.7-flash'
+export const PRIMARY_MODEL = 'gemini-3.8-flash'
 
 export const FALLBACK_MODEL = 'gemini-3.5-flash-lite'
 
 export const AVAILABLE_GEMINI_MODELS = [
-  { label: 'Gemini 3.7 Flash (Primary)', value: 'google/gemini-3.7-flash' },
+  { label: 'Gemini 3.8 Flash (Primary)', value: 'google/gemini-3.8-flash' },
   { label: 'Gemini 3.5 Flash Lite (Fast & Lightweight)', value: 'google/gemini-3.5-flash-lite' },
 ] as const
 

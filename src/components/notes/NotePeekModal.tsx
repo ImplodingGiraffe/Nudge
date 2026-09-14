@@ -258,7 +258,7 @@ export function NotePeekModal({
               variant="quiet"
               onClick={handleAutoTitle}
               disabled={isAutoTitling}
-              title="Auto-title with Gemini 3.7 Flash"
+              title="Auto-title with Gemini 3.8 Flash"
               className="h-8 text-[12px] gap-1 px-2.5 text-[var(--c-accent)] hover:bg-tint"
             >
               <Sparkles size={13} className={isAutoTitling ? 'animate-spin' : ''} />

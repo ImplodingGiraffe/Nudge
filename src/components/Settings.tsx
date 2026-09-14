@@ -66,8 +66,8 @@ export function Settings({ open, onClose }: { open: boolean; onClose: () => void
                   settings.tone === 'gentle'
                     ? 'Calm and low pressure.'
                     : settings.tone === 'blunt'
-                      ? 'Direct and concise.'
-                      : 'Clear and steady.'
+                      ? 'No sugercoating.'
+                      : 'Clear and direct.'
                 }
               >
                 <Segmented
