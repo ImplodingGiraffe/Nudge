@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Production build output
+dist/
+
+# Local credentials & secrets
+.credentials.local
+.env
+.env.*
+*.local
+
+# Cache & logs
+*.log
+.DS_Store
+*.tsbuildinfo
+.vite/
+.idea/
+.vscode/

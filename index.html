@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta
+      name="description"
+      content="Nudge — a study planner that actually keeps you on track."
+    />
+    <title>Nudge — study planner for people who procrastinate</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%2317181a'/%3E%3Cpath d='M30 70V30l40 40V30' stroke='%23fff' stroke-width='9' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E"
+    />
+    <style>
+      html { background: #f4f4f1; }
+      @media (prefers-color-scheme: dark) { html { background: #0e0f10; } }
+      #boot { position: fixed; inset: 0; display: grid; place-items: center; }
+      #boot i {
+        width: 22px; height: 22px; border-radius: 50%;
+        border: 2px solid rgba(128,128,128,.25); border-top-color: rgba(128,128,128,.7);
+        animation: bs .7s linear infinite;
+      }
+      @keyframes bs { to { transform: rotate(360deg) } }
+    </style>
+    <script>
+      try {
+        var BG = {
+           sand: ['#f7f1e7', '#17110e'],
+           slate: ['#eef2f5', '#091217'],
+           ocean: ['#ebf5f8', '#071217'],
+           forest: ['#eef5ee', '#0a130d'],
+           plum: ['#f6f0f5', '#160d15'],
+           rose: ['#faf0f1', '#170b0e'],
+           amber: ['#fcf3d8', '#1a1204'],
+           mint: ['#ecf6f2', '#081512'],
+           indigo: ['#eef2fb', '#0c1020'],
+           lavender: ['#f4f0fa', '#120d1c'],
+           terracotta: ['#faf0e9', '#180d09'],
+           graphite: ['#e8eaed', '#08090a'],
+        }
+        var el = document.documentElement
+        var t = localStorage.getItem('nudge.theme')
+        var p = localStorage.getItem('nudge.palette')
+        if (t === 'light' || t === 'dark') el.classList.add('theme-' + t)
+        if (BG[p]) el.setAttribute('data-palette', p)
+        var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        var bg = (BG[p] || BG.sand)[dark ? 1 : 0]
+        el.style.background = bg
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg)
+      } catch (e) {}
+      try {
+        if (!document.querySelector('meta[name="viewport"]')) {
+          var m = document.createElement('meta')
+          m.name = 'viewport'
+          m.content = 'width=device-width, initial-scale=1, viewport-fit=cover'
+          document.head.appendChild(m)
+        }
+      } catch (e) {}
+      try {
+        if (window.self !== window.top) {
+          var floor = function () {
+            var h = document.documentElement.clientHeight
+            document.documentElement.style.height = h < 420 ? '720px' : ''
+          }
+          floor()
+          addEventListener('resize', floor)
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"><div id="boot"><i></i></div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
