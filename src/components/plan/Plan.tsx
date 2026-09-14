@@ -435,7 +435,7 @@ export function Plan({
             title="Add holiday, reading break, or timetable switch"
           >
             <CalendarOff size={14} />
-            <span className="hidden md:inline">Holiday</span>
+            <span className="hidden md:inline">No classes</span>
           </Button>
 
           <Button
