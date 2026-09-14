@@ -39,7 +39,7 @@ The finished build will be a single self-contained file waiting at `dist/index.h
 
 ## Your data
 
-Nudge stores all your courses, tasks, plans, study sessions, and notes right in your browser's local storage. No data (except for the _optional and manually-triggered_ AI) gets uploaded to the cloud.
+Nudge stores all your courses, tasks, plans, study sessions, and notes right in your browser's local storage. No data (except for the _manually-triggered, optional_ AI) gets uploaded to the cloud.
 
 While this is awesome for privacy and offline use, it does mean Nudge doesn't support automatic syncing between devices. I decided to go this route because I wanted Nudge to be something you own. Static websites are wonderfully simple and keeping it static means I can host the live version for free on Neocities. In the future I might look into adding an optional field in settings where you can drop in an API key for a cloud storage provider. This also has the benefit of keeping important data, like notes, safer from accidental deletion.
 
