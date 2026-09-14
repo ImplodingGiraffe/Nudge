@@ -59,7 +59,7 @@ Reminders have their own personalities! You can set them to be **gentle**, **bal
 
 This was a late addition to the app, but I realized Nudge would benefit from having a built-in notes tab right alongside the schedule.
 
-That said, I am wary that taking lecture notes here instead of something like Word is dangerous, since everything lives right in your browser's storage. If your browser data gets cleared out and you haven't exported a backup, your notes sink with the ship. I realize that this is a rather large issue and have considered the File System Access API to save and read notes locally on your computer. But this is only supported on Chromium-based browsers. (I'm typing this on Firefox by the way.) 🥲
+That said, I am wary that taking lecture notes here instead of something like Word is dangerous since everything lives in your browser's storage. If your browser data gets cleared out and you haven't exported a backup, your notes sink with the ship. I realize that this is a rather large issue and have considered the File System Access API to save and read notes locally on your computer. But this is only supported on Chromium-based browsers. (I'm typing this on Firefox by the way.) 🥲
 
 > **Note:** Nudge's notes editor is powered by [Plate.js](https://platejs.org/).
 
