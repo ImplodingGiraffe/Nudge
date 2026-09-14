@@ -1,6 +1,30 @@
+<div align="center">
+  <table>
+    <tr>
+      <td rowspan="2" width="200">
+        <img src="https://github.com/user-attachments/assets/9150f525-d8b2-456a-9513-3ad3f28667bb" width="180"/>
+      </td>
+      <td width="340">
+        <img src="https://github.com/user-attachments/assets/63654789-d67d-440d-8959-0d08408ffcfe" width="320"/>
+      </td>
+      <td width="340">
+        <img src="https://github.com/user-attachments/assets/60a158df-8944-4f56-814c-f2dd9cb57b3f" width="320"/>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <img src="https://github.com/user-attachments/assets/f71b8c90-448b-40c9-b6c1-78d30e855998" width="320"/>
+      </td>
+      <td>
+        <img src="https://github.com/user-attachments/assets/7f4d7bca-a19c-4369-a24c-27837e81051b" width="320"/>
+      </td>
+    </tr>
+  </table>
+</div>
+
 # Nudge
 
-<img width="1440" height="786" alt="Screenshot 2026-09-13 at 7 35 57 PM" src="https://github.com/user-attachments/assets/bad4ff3a-402d-437d-a309-7eb1847fc008" />
+<img width="1440" ... src="https://github.com/user-attachments/assets/bad4ff3a-402d-437d-a309-7eb1847fc008" />
 
 Nudge is a study planner built for college students to keep track of courses, deadlines, study time, notes, and all the other little things. It's designed to be fairly intuitive and has features that are intended to help procrastinators (like me) keep their personal and academic life organized. It also has an optional AI assistant (more below).
 
