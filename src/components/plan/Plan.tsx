@@ -21,6 +21,12 @@ import { WeekGrid } from './WeekGrid'
 import { BlockSheet } from './BlockSheet'
 import { DayExceptionSheet } from './DayExceptionSheet'
 import { Button, Card, CourseDot, EmptyState, PeriodNavigator, Segmented } from '../ui'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useToast } from '../../lib/toast'
 import { cx } from '../../lib/ui'
 import { useIsMobile } from '../../lib/hooks'
@@ -404,26 +410,43 @@ export function Plan({
           </Button>
 
           {}
-          <Button
-            size="sm"
-            onClick={() => {
-              const today = new Date(now)
-              const h = Math.max(9, Math.min(19, today.getHours()))
-              today.setHours(h, 0, 0, 0)
-              const s = +today
-              const newBlock = store.addBlock({
-                kind: 'study',
-                start: new Date(s).toISOString(),
-                end: new Date(s + 60 * 60_000).toISOString(),
-              })
-              setSelected(newBlock.id)
-              undoable('Study block created')
-            }}
-            title="Create study block"
-          >
-            <Plus size={14} />
-            <span className="hidden sm:inline">Add block</span>
-          </Button>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" title="Add a study block or exam">
+                <Plus size={14} />
+                <span className="hidden sm:inline">Add block</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                onSelect={() => {
+                  const today = new Date(now)
+                  const h = Math.max(9, Math.min(19, today.getHours()))
+                  today.setHours(h, 0, 0, 0)
+                  const s = +today
+                  const newBlock = store.addBlock({
+                    kind: 'study',
+                    start: new Date(s).toISOString(),
+                    end: new Date(s + 60 * 60_000).toISOString(),
+                  })
+                  setSelected(newBlock.id)
+                  undoable('Study block created')
+                }}
+              >
+                <Plus size={14} className="text-ink-3" />
+                <span>Study block</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const defaultDate = days[0] ? new Date(days[0]) : new Date(now)
+                  setDayException({ date: dayKey(defaultDate), initialType: 'exam' })
+                }}
+              >
+                <GraduationCap size={14} className="text-ink-3" />
+                <span>Exam</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {}
           <Button
@@ -432,22 +455,10 @@ export function Plan({
               const defaultDate = days[0] ? new Date(days[0]) : new Date(now)
               setDayException({ date: dayKey(defaultDate) })
             }}
-            title="Add holiday, reading break, or timetable switch"
+            title="Add a holiday, cancelled classes day, snow day, reading break, or timetable switch"
           >
             <CalendarOff size={14} />
             <span className="hidden md:inline">Holiday</span>
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={() => {
-              const defaultDate = days[0] ? new Date(days[0]) : new Date(now)
-              setDayException({ date: dayKey(defaultDate), initialType: 'exam' })
-            }}
-            title="Add an exam"
-          >
-            <GraduationCap size={14} />
-            <span className="hidden md:inline">Exam</span>
           </Button>
 
           {}

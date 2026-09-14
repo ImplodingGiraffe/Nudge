@@ -19,7 +19,7 @@ type ExceptionType = 'holiday' | 'break' | 'override' | 'exam'
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const exceptionTypeLabel: Record<ExceptionType, string> = {
-  holiday: 'Holiday',
+  holiday: 'Holiday / no classes',
   break: 'Break',
   override: 'Timetable switch',
   exam: 'Exam',
@@ -235,9 +235,8 @@ export function DayExceptionSheet({
             value={type}
             onChange={(v) => setType(v as ExceptionType)}
             options={[
-              { value: 'holiday', label: 'Holiday' },
+              { value: 'holiday', label: 'Holiday / no classes' },
               { value: 'break', label: 'Break' },
-              { value: 'exam', label: 'Exam' },
               { value: 'override', label: 'Timetable switch' },
             ]}
             className="w-full [&>button]:flex-1"
@@ -246,14 +245,17 @@ export function DayExceptionSheet({
 
         {type === 'holiday' && (
           <>
-            <Field label="Holiday name">
+            <Field label="Holiday or no-classes day">
               <Input
                 data-autofocus
                 value={holidayTitle}
                 onChange={(e) => setHolidayTitle(e.target.value)}
-                placeholder="e.g. Labour Day, Thanksgiving"
+                placeholder="e.g. Labour Day, cancelled classes, snow day"
               />
             </Field>
+            <p className="-mt-2 text-[12px] leading-relaxed text-ink-3">
+              Use this for holidays, cancelled class days, snow days, or any other day with no regular classes.
+            </p>
             <Field label="Date">
               <Input
                 type="date"
