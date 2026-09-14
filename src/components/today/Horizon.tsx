@@ -122,7 +122,6 @@ const TO_DAYS = 21
 function useHorizon(derived: Derived, now: number): HorizonItem[] {
   const courses = useStore((s) => s.courses)
   const plannerEvents = useStore((s) => s.plannerEvents)
-  const blocks = useStore((s) => s.blocks)
 
   return useMemo(() => {
     const out: HorizonItem[] = []
@@ -163,25 +162,10 @@ function useHorizon(derived: Derived, now: number): HorizonItem[] {
       })
     }
 
-    for (const examBlock of blocks.filter((block) => block.kind === 'exam')) {
-      const at = +new Date(examBlock.start)
-      const days = daysBetween(now, at)
-      if (days < 0 || days > TO_DAYS) continue
-      const course = examBlock.courseId ? courseById.get(examBlock.courseId) : undefined
-      out.push({
-        id: `block-exam:${examBlock.id}`,
-        at,
-        title: examBlock.title || (course ? `${course.code} Exam` : 'Exam'),
-        course,
-        note: `${fmtDay(at)}${examBlock.weight != null ? ` · ${examBlock.weight}%` : ''}${examBlock.location ? ` · ${examBlock.location}` : ''}`,
-        exam: true,
-      })
-    }
-
     return out
       .sort((a, b) => Number(!!b.exam) - Number(!!a.exam) || a.at - b.at)
       .slice(0, 4)
-  }, [derived.ranked, courses, plannerEvents, blocks, now])
+  }, [derived.ranked, courses, plannerEvents, now])
 }
 
 export function Horizon({

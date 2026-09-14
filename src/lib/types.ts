@@ -108,7 +108,7 @@ export interface BlockSegment {
   label: string
 }
 
-export type BlockKind = 'study' | 'free' | 'appointment' | 'one_off_class' | 'exam'
+export type BlockKind = 'study' | 'free' | 'appointment' | 'one_off_class'
 
 export interface StudyBlock {
   id: ID
@@ -119,7 +119,6 @@ export interface StudyBlock {
   title?: string
   courseCode?: string
   location?: string
-  weight?: number
   start: Iso
   end: Iso
   done?: boolean

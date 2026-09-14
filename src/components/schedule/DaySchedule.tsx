@@ -78,7 +78,6 @@ export function DaySchedule({
           !!e.cls ||
           e.block?.kind === 'appointment' ||
           e.block?.kind === 'one_off_class' ||
-          e.block?.kind === 'exam' ||
           (!!e.event && !e.event.allDay),
       ),
     [todayAgenda],
@@ -130,7 +129,7 @@ export function DaySchedule({
 
   const classCount = agenda.filter((e) => e.cls).length
   const oneOffClassCount = agenda.filter((e) => e.block?.kind === 'one_off_class').length
-  const examCount = agenda.filter((e) => e.event?.kind === 'exam' || e.block?.kind === 'exam').length
+  const examCount = agenda.filter((e) => e.event?.kind === 'exam').length
   const appointmentCount = agenda.filter((e) => e.block?.kind === 'appointment').length
   const studyMin = agenda
     .filter((e) => e.block && (!e.block.kind || e.block.kind === 'study'))
@@ -403,30 +402,6 @@ function Row({
           <p className={cx('flex items-baseline gap-1.5 min-w-0', past ? 'text-ink-3' : 'text-ink')}>
             <span className="text-[13px] font-medium leading-[17px] truncate">{display.title}</span>
             {display.typeLabel && <span className="ui-eyebrow shrink-0">{display.typeLabel}</span>}
-          </p>
-          <ScheduleMeta minutes={minutes} place={entry.place} className="mt-0.5" />
-        </div>
-        {live ? <NowTag /> : isNext ? <NextTag /> : null}
-      </li>
-    )
-  }
-
-  if (b.kind === 'exam') {
-    return (
-      <li
-        className={cx(wrap, 'cursor-pointer', past && 'opacity-65')}
-        title={`${display.title} · ${timeLine}${b.location ? ` · ${b.location}` : ''}`}
-        onClick={cardClick(() => onOpenBlock(b.id))}
-      >
-        <TimeCell at={entry.start} muted={past} />
-        <span className="w-[18px] shrink-0 grid place-items-center h-[17px]">
-          {entry.course ? <CourseDot course={entry.course} /> : <ClipboardCheck size={14} className="text-[var(--c-warn)]" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className={cx('flex items-baseline gap-1.5 min-w-0', past ? 'text-ink-3' : 'text-ink')}>
-            <span className="text-[13px] font-medium leading-[17px] truncate">{display.title}</span>
-            <span className="ui-eyebrow ui-eyebrow-flag shrink-0">EXAM</span>
-            {b.weight != null && <span className="text-[11px] text-ink-3 font-normal shrink-0">{b.weight}%</span>}
           </p>
           <ScheduleMeta minutes={minutes} place={entry.place} className="mt-0.5" />
         </div>

@@ -1,5 +1,5 @@
 import { createElement, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Calendar, Check, ClipboardCheck, Coffee, Copy, Play, School, Trash2 } from 'lucide-react'
+import { BookOpen, Calendar, Check, Coffee, Copy, Play, School, Trash2 } from 'lucide-react'
 import type { Assignment, BlockKind, Course, StudyBlock } from '../../lib/types'
 import { atMinutes, fmtDuration, fmtTime, minutesOfDay, startOfDay } from '../../lib/date'
 import { stepOf } from '../../lib/steps'
@@ -44,8 +44,7 @@ export function BlockSheet(p: BlockSheetProps) {
   const isFree = kind === 'free'
   const isAppointment = kind === 'appointment'
   const isOneOffClass = kind === 'one_off_class'
-  const isExam = kind === 'exam'
-  const isStudy = !isFree && !isAppointment && !isOneOffClass && !isExam
+  const isStudy = !isFree && !isAppointment && !isOneOffClass
 
   const editableTitle = isDefaultBlockTitle(kind, block.title) ? '' : (block.title ?? '')
   const [titleDraft, setTitleDraft] = useState(editableTitle)
@@ -71,7 +70,7 @@ export function BlockSheet(p: BlockSheetProps) {
   const activeStep = isStudy ? stepOf(block, activeAssignment) : undefined
   const stepNo = activeStep && activeAssignment ? activeAssignment.subtasks.indexOf(activeStep) + 1 : 0
 
-  const activeLocation = (isAppointment || isOneOffClass || isExam) ? block.location : undefined
+  const activeLocation = (isAppointment || isOneOffClass) ? block.location : undefined
   const activeCourseCode = isOneOffClass && !activeCourse ? block.courseCode : undefined
   const activePlan = isStudy ? block.plan : undefined
 
@@ -116,10 +115,8 @@ export function BlockSheet(p: BlockSheetProps) {
       onClose={onClose}
       title={
         <span className="flex items-center gap-2">
-          {activeCourse && !isExam ? (
+          {activeCourse ? (
             <CourseDot course={activeCourse} size={16} />
-          ) : isExam ? (
-            <ClipboardCheck size={16} className="text-[var(--c-warn)] shrink-0" />
           ) : activeCourseCode?.trim() ? (
             createElement(oneOffIcon, { size: 16, className: 'text-ink-2 shrink-0', 'aria-hidden': true })
           ) : isFree ? (
@@ -137,10 +134,9 @@ export function BlockSheet(p: BlockSheetProps) {
       description={
         <>
           {fmtTime(startMs)} – {fmtTime(endMs)} · {fmtDuration(minutes)}
-          {isExam && ' · Exam'}
-          {isExam && block.weight != null && ` · ${block.weight}% of grade`}
           {isFree && ' · Protected downtime'}
-          {(isAppointment || isOneOffClass || isExam) && activeLocation && ` · ${activeLocation}`}
+          {isAppointment && activeLocation && ` · ${activeLocation}`}
+          {isOneOffClass && activeLocation && ` · ${activeLocation}`}
           {isStudy && activeStep && activeAssignment && (
             <>
               {' · '}
@@ -185,7 +181,7 @@ export function BlockSheet(p: BlockSheetProps) {
                 Focus
               </Button>
             )}
-            {(isStudy || isExam) && (
+            {isStudy && (
               <Button size="sm" variant="secondary" onClick={p.onToggleDone}>
                 <Check size={14} />
                 {block.done ? 'Mark incomplete' : 'Mark completed'}
@@ -206,67 +202,12 @@ export function BlockSheet(p: BlockSheetProps) {
           onChange={(v) => handleKindChange(v as BlockKind)}
           options={[
             { value: 'study', label: 'Study' },
-            { value: 'exam', label: 'Exam' },
             { value: 'free', label: 'Free time' },
             { value: 'appointment', label: 'Appointment' },
             { value: 'one_off_class', label: 'One-off class' },
           ]}
           className="w-full [&>button]:flex-1"
         />
-
-        {isExam && (
-          <>
-            <Field label="Exam title">
-              <Input
-                data-autofocus
-                value={titleDraft}
-                onChange={(e) => {
-                  setTitleDraft(e.target.value)
-                  p.onPatch({ title: e.target.value || undefined })
-                }}
-                placeholder={activeCourse ? `${activeCourse.code} Midterm / Final` : 'Midterm / Final Exam'}
-              />
-            </Field>
-            <Field label="Course (optional)">
-              <Select
-                value={block.courseId ?? ''}
-                onChange={(e) => p.onPatch({ courseId: e.target.value || null })}
-              >
-                <option value="">No course</option>
-                {courses
-                  .filter((c) => !c.archived || c.id === block.courseId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code}{c.title ? ` · ${c.title}` : ''}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Location / Room (optional)" className="col-span-2 sm:col-span-1">
-                <Input
-                  value={block.location ?? ''}
-                  onChange={(e) => p.onPatch({ location: e.target.value || undefined })}
-                  placeholder={activeCourse?.room ? `${activeCourse.room} (usual room)` : 'e.g. Leacock 132, Gym'}
-                />
-              </Field>
-              <Field label="Weight (% of grade, optional)" className="col-span-2 sm:col-span-1">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  value={block.weight ?? ''}
-                  onChange={(e) => p.onPatch({ weight: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder="e.g. 25"
-                />
-              </Field>
-            </div>
-            <div className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] text-ink-3">
-              Exams appear prominently on your calendar with countdown badges that intensify as the exam approaches.
-            </div>
-          </>
-        )}
 
         {isFree && (
           <>

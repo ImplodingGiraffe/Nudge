@@ -375,7 +375,7 @@ export const NoteCard = memo(function NoteCard({
               </button>
             )}
 
-            {(note as FocusNote & { sessionId?: string }).sessionId && (
+            {note.sessionId && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-tint text-ink-2 shrink-0">
                 <StickyNote size={10} />
                 <span>Session</span>

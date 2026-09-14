@@ -76,7 +76,7 @@ export function Plan({
   const [selected, setSelected] = useState<string | null>(null)
   const [dayException, setDayException] = useState<{
     date: string
-    initialType?: 'holiday' | 'break' | 'override'
+    initialType?: 'holiday' | 'break' | 'override' | 'exam'
     event?: PlannerEvent | null
     override?: ScheduleOverride | null
   } | null>(null)
@@ -127,7 +127,6 @@ export function Plan({
           assignmentId: src.assignmentId,
           title: src.title,
           location: src.location,
-           weight: src.weight,
           start: new Date(startMs).toISOString(),
           end: new Date(endMs).toISOString(),
         })
@@ -418,9 +417,9 @@ export function Plan({
                 end: new Date(s + 60 * 60_000).toISOString(),
               })
               setSelected(newBlock.id)
-              undoable('Block created')
+              undoable('Study block created')
             }}
-            title="Create study, exam, free time, or appointment block"
+            title="Create study block"
           >
             <Plus size={14} />
             <span className="hidden sm:inline">Add block</span>
@@ -433,10 +432,22 @@ export function Plan({
               const defaultDate = days[0] ? new Date(days[0]) : new Date(now)
               setDayException({ date: dayKey(defaultDate) })
             }}
-            title="Add holiday, cancelled class, snow day, reading break, or timetable switch"
+            title="Add holiday, reading break, or timetable switch"
           >
             <CalendarOff size={14} />
-            <span className="hidden md:inline">No classes</span>
+            <span className="hidden md:inline">Holiday</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => {
+              const defaultDate = days[0] ? new Date(days[0]) : new Date(now)
+              setDayException({ date: dayKey(defaultDate), initialType: 'exam' })
+            }}
+            title="Add an exam"
+          >
+            <GraduationCap size={14} />
+            <span className="hidden md:inline">Exam</span>
           </Button>
 
           {}

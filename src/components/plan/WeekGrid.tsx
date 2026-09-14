@@ -606,7 +606,6 @@ export function WeekGrid(props: WeekGridProps) {
                           left={(col / cols) * 100}
                           width={(1 / cols) * 100}
                           colW={colW}
-                          now={now}
                           onOpen={() => onSelectPlannerEvent(item.event.id)}
                         />
                       )
@@ -629,7 +628,6 @@ export function WeekGrid(props: WeekGridProps) {
                         dragging={false}
                         selected={selectedId === block.id}
                         past={+new Date(block.end) < now}
-                        now={now}
                         onKeyCommand={(cmd, shift) => {
                           if (cmd === 'delete') onDeleteBlock(block.id)
                           else if (cmd === 'done') onToggleDone(block.id)
@@ -711,7 +709,6 @@ export function WeekGrid(props: WeekGridProps) {
                   dragging
                   selected={false}
                   past={false}
-                  now={now}
                   onKeyCommand={() => {}}
                 />
               </div>
@@ -737,7 +734,6 @@ export function WeekGrid(props: WeekGridProps) {
                     width={100}
                     colW={colW}
                     dragging
-                    now={now}
                     onOpen={() => {}}
                   />
                 </div>
@@ -803,7 +799,6 @@ function ClassChip({
   left,
   width,
   colW,
-  now = Date.now(),
   dragging = false,
   onOpen,
 }: {
@@ -814,7 +809,6 @@ function ClassChip({
   left: number
   width: number
   colW: number
-  now?: number
   dragging?: boolean
   onOpen: () => void
 }) {
@@ -1029,7 +1023,6 @@ function PlannerEventChip({
   left,
   width,
   colW,
-  now = Date.now(),
   dragging = false,
   onOpen,
 }: {
@@ -1040,7 +1033,6 @@ function PlannerEventChip({
   left: number
   width: number
   colW: number
-  now?: number
   dragging?: boolean
   onOpen: () => void
 }) {
@@ -1071,22 +1063,6 @@ function PlannerEventChip({
         : (height >= 120 ? (isNarrow ? '5px 5px' : '6px 7px') : (isNarrow ? '3.5px 5px' : '4px 7px'))
 
   const handleH = isTier1 ? 3 : isTier2 ? 4 : isTier3 ? 5 : Math.max(5, Math.min(8, Math.floor(height / 6)))
-  const startMs = +new Date(event.start)
-  const endMs = +new Date(event.end)
-  const past = endMs < now
-  const daysUntil = (startMs - now) / 86_400_000
-  const isImminent = isExam && !past && daysUntil > 0 && daysUntil <= 1.5
-  const isApproaching = isExam && !past && daysUntil > 1.5 && daysUntil <= 3.5
-  const isSoon = isExam && !past && daysUntil > 3.5 && daysUntil <= 7.5
-  const countdownText = isExam && !past
-    ? daysUntil <= 0.5
-      ? 'Today'
-      : daysUntil <= 1.5
-        ? 'Tomorrow'
-        : daysUntil <= 7
-          ? `in ${Math.ceil(daysUntil)}d`
-          : null
-    : null
 
   const renderIcon = (size: number) => {
     if (course) return <CourseDot course={course} size={size} className="shrink-0" />
@@ -1105,15 +1081,7 @@ function PlannerEventChip({
         'block-grab group absolute overflow-hidden text-left rounded-[8px] transition-all duration-150',
         'border text-ink select-none',
         isExam
-          ? past
-            ? 'border-line-2 bg-surface-2 opacity-65'
-            : isImminent
-              ? 'border-[var(--c-warn)] bg-gradient-to-br from-amber-500/25 to-rose-500/15 shadow-md ring-1 ring-[var(--c-warn)]/60'
-              : isApproaching
-                ? 'border-[var(--c-warn)]/80 bg-amber-500/15 shadow-xs'
-                : isSoon
-                  ? 'border-[var(--c-warn)]/60 bg-amber-500/10 shadow-xs'
-                  : 'border-[var(--c-warn)]/45 bg-surface shadow-xs'
+          ? 'border-[var(--c-warn)] bg-surface shadow-xs hover:shadow-card'
           : 'border-line-2 bg-surface-2 hover:bg-tint hover:border-line-2/80',
         dragging && 'z-40 shadow-pop cursor-grabbing',
         !dragging && 'cursor-grab',
@@ -1145,13 +1113,9 @@ function PlannerEventChip({
                 {event.title}
               </span>
             </div>
-            <div className="flex items-center gap-1 shrink-0 ml-auto">
-              {countdownText && <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-              {!isNarrow && (
-                <TypePill label={isExam ? 'EXAM' : kindLabel} tone={isExam ? 'warn' : 'default'} size="xs" className="shrink-0" />
-              )}
-              {isImminent && <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-critical)] animate-pulse" aria-label="Exam is imminent" />}
-            </div>
+            {!isNarrow && (
+              <TypePill label={isExam ? 'EXAM' : kindLabel} tone={isExam ? 'warn' : 'default'} size="xs" className="shrink-0 ml-auto" />
+            )}
           </div>
         ) : isTier2 ? (
           <div className="h-full flex flex-col justify-center gap-0.5 min-w-0">
@@ -1165,10 +1129,7 @@ function PlannerEventChip({
                   {event.title}
                 </span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {countdownText && <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-                {!isNarrow && <TypePill label={isExam ? 'EXAM' : kindLabel} tone={isExam ? 'warn' : 'default'} size="xs" />}
-              </div>
+              {!isNarrow && <TypePill label={isExam ? 'EXAM' : kindLabel} tone={isExam ? 'warn' : 'default'} size="xs" />}
             </div>
             <div className="flex items-center gap-1 text-[9px] font-medium text-ink-2 tnum leading-tight min-w-0">
               {place ? (
@@ -1192,10 +1153,7 @@ function PlannerEventChip({
                   <span className="text-[10px] font-bold text-ink leading-tight truncate">{event.title}</span>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {countdownText && <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-                {!isNarrow && <TypePill label={isExam ? 'EXAM' : kindLabel} tone={isExam ? 'warn' : 'default'} size="xs" />}
-              </div>
+              {!isNarrow && <TypePill label={isExam ? 'EXAM' : kindLabel} tone={isExam ? 'warn' : 'default'} size="xs" />}
             </div>
 
             {course && (
@@ -1289,7 +1247,6 @@ interface ChipProps {
   left: number
   width: number
   colW: number
-  now: number
   dragging: boolean
   selected: boolean
   past: boolean
@@ -1305,7 +1262,6 @@ function BlockChip({
   left,
   width,
   colW,
-  now,
   dragging,
   selected,
   past,
@@ -1315,16 +1271,15 @@ function BlockChip({
   const isFree = kind === 'free'
   const isAppointment = kind === 'appointment'
   const isOneOffClass = kind === 'one_off_class'
-  const isExam = kind === 'exam'
-  const isStudy = !isFree && !isAppointment && !isOneOffClass && !isExam
+  const isStudy = !isFree && !isAppointment && !isOneOffClass
   const activeAssignment = isStudy ? assignment : undefined
   const activeStep = isStudy ? stepOf(block, activeAssignment) : undefined
-  const activeLocation = (isAppointment || isOneOffClass || isExam) ? block.location : undefined
+  const activeLocation = (isAppointment || isOneOffClass) ? block.location : undefined
   const locationPlace = activeLocation ? parsePlace(activeLocation) : null
   const activeCourse = isFree ? undefined : course
   const activeCourseCode = isOneOffClass && !activeCourse ? block.courseCode : undefined
   const activePlan = isStudy ? block.plan : undefined
-  const done = !!block.done
+  const done = isStudy && !!block.done
 
   const display = blockDisplay({
     block: { ...block, kind },
@@ -1343,20 +1298,6 @@ function BlockChip({
   const isTier3 = height >= 46 && height < 68
 
   const timeParts = formatTimeParts(+new Date(block.start), +new Date(block.end))
-  const startMs = +new Date(block.start)
-  const daysUntil = (startMs - now) / 86_400_000
-  const isImminent = isExam && !past && daysUntil > 0 && daysUntil <= 1.5
-  const isApproaching = isExam && !past && daysUntil > 1.5 && daysUntil <= 3.5
-  const isSoon = isExam && !past && daysUntil > 3.5 && daysUntil <= 7.5
-  const countdownText = isExam && !past
-    ? daysUntil <= 0.5
-      ? 'Today'
-      : daysUntil <= 1.5
-        ? 'Tomorrow'
-        : daysUntil <= 7
-          ? `in ${Math.ceil(daysUntil)}d`
-          : null
-    : null
 
   const chipPadding = isTier1
     ? (isUltraNarrow ? '1px 3px' : isNarrow ? '1px 4px' : '1px 5px')
@@ -1368,37 +1309,16 @@ function BlockChip({
 
   const handleH = isTier1 ? 3 : isTier2 ? 4 : isTier3 ? 5 : Math.max(5, Math.min(8, Math.floor(height / 6)))
 
-  let bg = isFree && !activeCourse
+  const bg = isFree && !activeCourse
     ? 'var(--c-surface-2)'
     : solidOf(activeCourse, dragging ? 24 : 14)
 
-  let border = isFree && !activeCourse
+  const border = isFree && !activeCourse
     ? 'inset 0 0 0 1px var(--c-line-2)'
     : `inset 0 0 0 1px ${edgeOf(activeCourse, dragging ? 46 : 34)}`
-  if (isExam) {
-    if (past) {
-      bg = 'color-mix(in srgb, var(--c-warn) 6%, var(--c-surface-2))'
-      border = 'inset 0 0 0 1px var(--c-line-2)'
-    } else if (isImminent) {
-      bg = 'linear-gradient(135deg, color-mix(in srgb, var(--c-warn) 30%, var(--c-surface)), color-mix(in srgb, var(--c-critical) 16%, var(--c-surface)))'
-      border = 'inset 0 0 0 1.5px var(--c-warn), 0 2px 10px -2px rgba(245, 158, 11, 0.45)'
-    } else if (isApproaching) {
-      bg = 'linear-gradient(135deg, color-mix(in srgb, var(--c-warn) 20%, var(--c-surface)), color-mix(in srgb, var(--c-warn) 12%, var(--c-surface)))'
-      border = 'inset 0 0 0 1.5px color-mix(in srgb, var(--c-warn) 75%, var(--c-line-2))'
-    } else if (isSoon) {
-      bg = 'color-mix(in srgb, var(--c-warn) 14%, var(--c-surface))'
-      border = 'inset 0 0 0 1px color-mix(in srgb, var(--c-warn) 60%, var(--c-line-2))'
-    } else {
-      bg = activeCourse ? solidOf(activeCourse, 14) : 'color-mix(in srgb, var(--c-warn) 9%, var(--c-surface))'
-      border = 'inset 0 0 0 1px color-mix(in srgb, var(--c-warn) 45%, var(--c-line-2))'
-    }
-  }
 
   const renderLeadingIcon = (size: number) => {
     if (done) return <Check size={size} className="shrink-0 text-ink-2" />
-    if (isExam) {
-      return <ClipboardCheck size={size} className={cx('shrink-0', isImminent ? 'text-[var(--c-critical-ink)]' : 'text-[var(--c-warn)]')} />
-    }
     if (activeCourse) return <CourseDot course={activeCourse} size={size} className="shrink-0" />
     if (activeCourseCode?.trim()) {
       return createElement(subjectIcon(activeCourseCode), { size, className: 'shrink-0 text-ink-2', 'aria-hidden': true })
@@ -1409,9 +1329,7 @@ function BlockChip({
     return <BookOpen size={size} className="shrink-0 text-ink-2" />
   }
 
-  const kindPillLabel = isExam
-    ? 'Exam'
-    : isAppointment
+  const kindPillLabel = isAppointment
     ? 'Appt'
     : isFree
       ? 'Free'
@@ -1456,7 +1374,6 @@ function BlockChip({
         selected && !dragging && 'ring-2 ring-ink ring-offset-1 ring-offset-surface z-20',
         done && 'opacity-65',
         past && !done && 'opacity-80',
-        isExam && isImminent && !dragging && 'ring-1 ring-[var(--c-warn)]/60',
       )}
       style={{
         ...itemFrame(left, width),
@@ -1485,10 +1402,7 @@ function BlockChip({
               </span>
             </div>
             {!isUltraNarrow && (
-              <div className="flex items-center gap-1 shrink-0">
-                {countdownText && <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-                <TypePill label={kindPillLabel} tone={isExam && isImminent ? 'warn' : 'default'} size="xs" />
-              </div>
+              <TypePill label={kindPillLabel} size="xs" />
             )}
           </div>
         ) : isTier2 ? (
@@ -1503,10 +1417,7 @@ function BlockChip({
                   {title}
                 </span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {countdownText && <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-                <TypePill label={kindPillLabel} tone={isExam && isImminent ? 'warn' : 'default'} size="xs" />
-              </div>
+              <TypePill label={kindPillLabel} size="xs" />
             </div>
             <div className="flex items-center gap-1 text-[9px] font-medium text-ink-2 leading-tight min-w-0">
               {locationPlace ? (
@@ -1529,10 +1440,7 @@ function BlockChip({
                   <span className="text-[10px] font-bold text-ink-2 tracking-tight truncate">{activeCourse.code}</span>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {countdownText && <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-                <TypePill label={kindPillLabel} tone={isExam && isImminent ? 'warn' : 'default'} size="xs" />
-              </div>
+              <TypePill label={kindPillLabel} size="xs" />
             </div>
 
             <div className={cx('text-[10px] font-bold text-ink leading-tight truncate min-w-0', done && 'line-through opacity-80')}>
@@ -1558,10 +1466,7 @@ function BlockChip({
                 {renderLeadingIcon(10.5)}
                 {activeCourse && <span className="text-[10.5px] font-bold text-ink-2 tracking-tight truncate">{activeCourse.code}</span>}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {countdownText && <span className="text-[9px] font-bold text-[var(--c-warn)] uppercase tracking-tight">{countdownText}</span>}
-                <TypePill label={kindPillLabel} tone={isExam && isImminent ? 'warn' : 'default'} size={isNarrow ? 'xs' : 'sm'} />
-              </div>
+              <TypePill label={kindPillLabel} size={isNarrow ? 'xs' : 'sm'} />
             </div>
 
             <div className="flex items-start gap-1 min-w-0">
@@ -1606,12 +1511,6 @@ function BlockChip({
             {height >= 120 && isStudy && activeAssignment?.weight != null && (
               <div className="inline-flex items-center h-[17px] px-1.5 rounded-full bg-black/5 dark:bg-white/10 text-[8px] font-bold text-ink-2 w-fit mt-0.5 uppercase tracking-wider">
                 {activeAssignment.weight}% of grade
-              </div>
-            )}
-
-            {height >= 110 && isExam && block.weight != null && (
-              <div className="inline-flex items-center h-[17px] px-1.5 rounded-full bg-amber-500/15 text-[8px] font-bold text-[var(--c-warn)] w-fit mt-0.5 uppercase tracking-wider">
-                {block.weight}% of grade
               </div>
             )}
 
