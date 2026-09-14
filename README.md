@@ -59,7 +59,7 @@ Reminders have their own personalities! You can set them to be **gentle**, **bal
 
 This was a late addition to the app, but I realized Nudge would benefit from having a built-in notes tab right alongside the schedule.
 
-That said, I am wary that taking lecture notes here instead of something like Google Docs (setting aside Google privacy concerns) is dangerous, since everything lives right in your browser's storage. If your browser data gets cleared out and you haven't exported a backup, your notes sink with the ship. I realize that this is a rather large issue and have considered the File System Access API to save and read notes locally on your computer. But this is only supported on Chromium-based browsers. (I'm typing this on Firefox by the way.) 🥲
+That said, I am wary that taking lecture notes here instead of something like Word is dangerous, since everything lives right in your browser's storage. If your browser data gets cleared out and you haven't exported a backup, your notes sink with the ship. I realize that this is a rather large issue and have considered the File System Access API to save and read notes locally on your computer. But this is only supported on Chromium-based browsers. (I'm typing this on Firefox by the way.) 🥲
 
 > **Note:** Nudge's notes editor is powered by [Plate.js](https://platejs.org/).
 
@@ -79,7 +79,7 @@ As I just said, Nudge is definitely a bit buggy. Over the past few days, I have 
 
 I'm not a true developer myself (more of a vibe coder, though that term often unfairly implies sloppiness) but I care a lot about Nudge and want it to feel polished and reliable.
 
-One area that I know needs more love is responsive design. Most of my testing was focused around desktop usability though I did try to keep mobile in mind. I will try to improve usability across devices of all shapes and sizes in the future.
+One area that I know needs more work is responsive design. Most of my testing was focused around desktop usability though I did try to keep mobile in mind. I will try to improve usability across devices of all shapes and sizes in the future.
 
 Since I am a newly minted college student I doubt I'll have much time to work on Nudge. But I'll do my best to squash bugs and look over PRs!
 
