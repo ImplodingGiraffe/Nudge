@@ -16,6 +16,7 @@ export function isDefaultBlockTitle(kind: BlockKind | undefined, value: string |
   if (resolvedKind === 'free') return title === 'free time' || title === 'appointment'
   if (resolvedKind === 'appointment') return title === 'appointment' || title === 'free time'
   if (resolvedKind === 'one_off_class') return title === 'one-off' || title === 'one-off class'
+  if (resolvedKind === 'exam') return title === 'exam' || title === 'exam block'
   return title === 'study' || title === 'study block'
 }
 
@@ -25,6 +26,7 @@ export function blockDisplay({ block, course, assignment, stepTitle }: DisplayIn
   const isFree = kind === 'free'
   const isAppointment = kind === 'appointment'
   const isOneOffClass = kind === 'one_off_class'
+  const isExam = kind === 'exam'
 
   const rawTitle = block.title?.trim()
 
@@ -36,6 +38,8 @@ export function blockDisplay({ block, course, assignment, stepTitle }: DisplayIn
       title = 'Free time'
     } else if (isAppointment) {
       title = 'Appointment'
+    } else if (isExam) {
+      title = course?.code ? `${course.code} Exam` : 'Exam'
     } else {
       title = 'One-off class'
     }
@@ -46,8 +50,10 @@ export function blockDisplay({ block, course, assignment, stepTitle }: DisplayIn
   return {
     title,
     typeLabel: isDefaultBlockTitle(kind, title)
-      ? undefined
-      : isOneOffClass
+      ? (isExam ? 'EXAM' : undefined)
+      : isExam
+        ? 'EXAM'
+        : isOneOffClass
         ? 'ONE-OFF'
         : isFree
           ? 'FREE TIME'

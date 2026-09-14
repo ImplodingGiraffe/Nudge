@@ -1,0 +1,1614 @@
+Here is the complete set of updates to integrate **Exam** as a first-class block type under **Add Block**, remove the exam option from the **Holiday / No classes** exception modal, clarify that **No classes** handles cancelled classes and snow days, and redesign the Exam block UI with progressive intensity as the exam approaches.
+
+### 1. Update Types (`src/lib/types.ts`)
+
+Add `'exam'` to `BlockKind` and `weight?: number` to `StudyBlock`.
+
+```typescript
+// In src/lib/types.ts
+
+export type BlockKind = 'study' | 'free' | 'appointment' | 'one_off_class' | 'exam'
+
+export interface StudyBlock {
+  id: ID
+  kind?: BlockKind
+  courseId: ID | null
+  assignmentId: ID | null
+  subtaskId?: ID | null
+  title?: string
+  courseCode?: string
+  location?: string
+  weight?: number
+  start: Iso
+  end: Iso
+  done?: boolean
+  plan?: BlockSegment[]
+  locked?: boolean
+  sourceMeetingId?: ID
+  sourceDate?: DayKey
+  createdAt: Iso
+}
+```
+
+---
+
+### 2. Update Schedule Display Helper (`src/lib/scheduleDisplay.ts`)
+
+Update `isDefaultBlockTitle` and `blockDisplay` to format exam blocks cleanly.
+
+```typescript
+import type { Assignment, BlockKind, Course, StudyBlock } from './types'
+
+type DisplayInput = {
+  block: StudyBlock
+  course?: Course
+  assignment?: Assignment
+  stepTitle?: string
+}
+
+const normalize = (value: string | undefined) => (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+
+export function isDefaultBlockTitle(kind: BlockKind | undefined, value: string | undefined) {
+  const resolvedKind = kind ?? 'study'
+  const title = normalize(value)
+  if (!title) return true
+  if (resolvedKind === 'free') return title === 'free time' || title === 'appointment'
+  if (resolvedKind === 'appointment') return title === 'appointment' || title === 'free time'
+  if (resolvedKind === 'one_off_class') return title === 'one-off' || title === 'one-off class'
+  if (resolvedKind === 'exam') return title === 'exam' || title === 'exam block'
+  return title === 'study' || title === 'study block'
+}
+
+export function blockDisplay({ block, course, assignment, stepTitle }: DisplayInput) {
+  const kind = block.kind ?? 'study'
+  const isStudy = kind === 'study'
+  const isFree = kind === 'free'
+  const isAppointment = kind === 'appointment'
+  const isOneOffClass = kind === 'one_off_class'
+  const isExam = kind === 'exam'
+
+  const rawTitle = block.title?.trim()
+
+  let title: string
+  if (isDefaultBlockTitle(kind, rawTitle)) {
+    if (isStudy) {
+      title = stepTitle || assignment?.title || course?.code || 'Study'
+    } else if (isFree) {
+      title = 'Free time'
+    } else if (isAppointment) {
+      title = 'Appointment'
+    } else if (isExam) {
+      title = course?.code ? `${course.code} Exam` : 'Exam'
+    } else {
+      title = 'One-off class'
+    }
+  } else {
+    title = rawTitle as string
+  }
+
+  return {
+    title,
+    typeLabel: isDefaultBlockTitle(kind, title)
+      ? (isExam ? 'EXAM' : undefined)
+      : isExam
+        ? 'EXAM'
+        : isOneOffClass
+          ? 'ONE-OFF'
+          : isFree
+            ? 'FREE TIME'
+            : isAppointment
+              ? 'APPOINTMENT'
+              : 'STUDY',
+  }
+}
+```
+
+---
+
+### 3. Update Block Sheet with Exam Tab (`src/components/plan/BlockSheet.tsx`)
+
+Add `'exam'` alongside `'study'`, `'free'`, `'appointment'`, and `'one_off_class'`, including Course, Location, and Grade Weight fields.
+
+```typescript
+import { createElement, useEffect, useMemo, useState } from 'react'
+import { BookOpen, Calendar, Check, ClipboardCheck, Coffee, Copy, Play, School, Trash2 } from 'lucide-react'
+import type { Assignment, BlockKind, Course, StudyBlock } from '../../lib/types'
+import { atMinutes, fmtDuration, fmtTime, minutesOfDay, startOfDay } from '../../lib/date'
+import { stepOf } from '../../lib/steps'
+import { subjectIcon } from '../../lib/subjectIcon'
+import { blockDisplay, isDefaultBlockTitle } from '../../lib/scheduleDisplay'
+import { Button, CourseDot, Field, Input, Segmented, Select, Sheet } from '../ui'
+import { cx } from '../../lib/ui'
+import { SegmentBar, SegmentRows } from '../schedule/SessionPlan'
+
+export interface BlockSheetProps {
+  block: StudyBlock
+  courses: Course[]
+  assignments: Assignment[]
+  onClose: () => void
+  onPatch: (patch: Partial<StudyBlock>) => void
+  onReschedule: (startMs: number, endMs: number) => void
+  onDuplicate: () => void
+  onDelete: () => void
+  onToggleDone: () => void
+  onFocus: () => void
+}
+
+const QUICK = [15, 25, 45, 60, 90, 120]
+const DURATIONS = [15, 25, 30, 45, 60, 75, 90, 120, 150, 180, 240]
+
+const toDateInput = (iso: string) => {
+  const d = new Date(iso)
+  const pad = (n: number) => `${n}`.padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+const toTimeInput = (iso: string) => {
+  const d = new Date(iso)
+  const pad = (n: number) => `${n}`.padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function BlockSheet(p: BlockSheetProps) {
+  const { block, courses, assignments, onClose } = p
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const kind: BlockKind = block.kind ?? 'study'
+  const isFree = kind === 'free'
+  const isAppointment = kind === 'appointment'
+  const isOneOffClass = kind === 'one_off_class'
+  const isExam = kind === 'exam'
+  const isStudy = !isFree && !isAppointment && !isOneOffClass && !isExam
+
+  const editableTitle = isDefaultBlockTitle(kind, block.title) ? '' : (block.title ?? '')
+  const [titleDraft, setTitleDraft] = useState(editableTitle)
+  const startMs = +new Date(block.start)
+  const endMs = +new Date(block.end)
+  const minutes = Math.round((endMs - startMs) / 60_000)
+
+  const openTasks = useMemo(() => {
+    const byCourse = new Map<string, Assignment[]>()
+    for (const a of assignments) {
+      if (a.status === 'done' || a.archived) continue
+      const k = a.courseId ?? '__none__'
+      byCourse.set(k, [...(byCourse.get(k) ?? []), a])
+    }
+    return byCourse
+  }, [assignments])
+
+  const activeAssignment = isStudy && block.assignmentId ? assignments.find((a) => a.id === block.assignmentId) : undefined
+  const resolvedCourseId = isFree
+    ? undefined
+    : (block.courseId ?? (isStudy ? activeAssignment?.courseId : undefined))
+  const activeCourse = resolvedCourseId ? courses.find((c) => c.id === resolvedCourseId) : undefined
+  const activeStep = isStudy ? stepOf(block, activeAssignment) : undefined
+  const stepNo = activeStep && activeAssignment ? activeAssignment.subtasks.indexOf(activeStep) + 1 : 0
+
+  const activeLocation = (isAppointment || isOneOffClass || isExam) ? block.location : undefined
+  const activeCourseCode = isOneOffClass && !activeCourse ? block.courseCode : undefined
+  const activePlan = isStudy ? block.plan : undefined
+
+  const display = blockDisplay({
+    block: { ...block, kind },
+    course: activeCourse,
+    assignment: activeAssignment,
+    stepTitle: activeStep?.title,
+  })
+  const { title } = display
+  const oneOffIcon = activeCourseCode?.trim() ? subjectIcon(activeCourseCode) : School
+
+  useEffect(() => {
+    setTitleDraft(editableTitle)
+  }, [block.id, kind, editableTitle])
+
+  const setDuration = (mins: number) => p.onReschedule(startMs, startMs + mins * 60_000)
+
+  const setDay = (value: string) => {
+    if (!value) return
+    const [y, m, d] = value.split('-').map(Number)
+    const nextDay = new Date(y, m - 1, d)
+    const next = +atMinutes(nextDay, minutesOfDay(startMs))
+    p.onReschedule(next, next + minutes * 60_000)
+  }
+
+  const setStartTime = (value: string) => {
+    if (!value) return
+    const [h, mi] = value.split(':').map(Number)
+    const next = +atMinutes(startOfDay(startMs), h * 60 + mi)
+    p.onReschedule(next, next + minutes * 60_000)
+  }
+
+  const handleKindChange = (nextKind: BlockKind) => {
+    if (nextKind === kind) return
+    p.onPatch({ kind: nextKind })
+  }
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2">
+          {activeCourse && !isExam ? (
+            <CourseDot course={activeCourse} size={16} />
+          ) : isExam ? (
+            <ClipboardCheck size={16} className="text-[var(--c-warn)] shrink-0" />
+          ) : activeCourseCode?.trim() ? (
+            createElement(oneOffIcon, { size: 16, className: 'text-ink-2 shrink-0', 'aria-hidden': true })
+          ) : isFree ? (
+            <Coffee size={16} className="text-ink-2 shrink-0" />
+          ) : isAppointment ? (
+            <Calendar size={16} className="text-ink-2 shrink-0" />
+          ) : isOneOffClass ? (
+            <School size={16} className="text-ink-2 shrink-0" />
+          ) : (
+            <BookOpen size={16} className="text-ink-2 shrink-0" />
+          )}
+          <span className="truncate">{title}</span>
+        </span>
+      }
+      description={
+        <>
+          {fmtTime(startMs)} – {fmtTime(endMs)} · {fmtDuration(minutes)}
+          {isExam && ' · Exam'}
+          {isExam && block.weight != null && ` · ${block.weight}% of grade`}
+          {isFree && ' · Protected downtime'}
+          {(isAppointment || isOneOffClass || isExam) && activeLocation && ` · ${activeLocation}`}
+          {isStudy && activeStep && activeAssignment && (
+            <>
+              {' · '}
+              <span className="text-ink-3">
+                step {stepNo} of {activeAssignment.subtasks.length}
+              </span>{' '}
+              of {activeAssignment.title}
+            </>
+          )}
+        </>
+      }
+      footer={
+        confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] text-ink-2 flex-1">Delete this block?</span>
+            <Button size="sm" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" variant="danger" onClick={p.onDelete} data-autofocus>
+              Delete
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Delete block"
+              className="px-2.5"
+            >
+              <Trash2 size={14} />
+            </Button>
+            <Button size="sm" onClick={p.onDuplicate}>
+              <Copy size={13} />
+              Duplicate
+            </Button>
+            <div className="flex-1" />
+            {isStudy && !block.done && (
+              <Button size="sm" onClick={p.onFocus}>
+                <Play size={13} />
+                Focus
+              </Button>
+            )}
+            {(isStudy || isExam) && (
+              <Button size="sm" variant="secondary" onClick={p.onToggleDone}>
+                <Check size={14} />
+                {block.done ? 'Mark incomplete' : 'Mark completed'}
+              </Button>
+            )}
+            <Button size="sm" variant="primary" onClick={onClose}>
+              Done editing
+            </Button>
+          </div>
+        )
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Segmented
+          size="sm"
+          ariaLabel="Block type"
+          value={kind}
+          onChange={(v) => handleKindChange(v as BlockKind)}
+          options={[
+            { value: 'study', label: 'Study' },
+            { value: 'exam', label: 'Exam' },
+            { value: 'free', label: 'Free time' },
+            { value: 'appointment', label: 'Appointment' },
+            { value: 'one_off_class', label: 'One-off class' },
+          ]}
+          className="w-full [&>button]:flex-1"
+        />
+
+        {isExam && (
+          <>
+            <Field label="Exam title">
+              <Input
+                data-autofocus
+                value={titleDraft}
+                onChange={(e) => {
+                  setTitleDraft(e.target.value)
+                  p.onPatch({ title: e.target.value || undefined })
+                }}
+                placeholder={activeCourse ? `${activeCourse.code} Midterm / Final` : 'Midterm / Final Exam'}
+              />
+            </Field>
+
+            <Field label="Course (optional)">
+              <Select
+                value={block.courseId ?? ''}
+                onChange={(e) => p.onPatch({ courseId: e.target.value || null })}
+              >
+                <option value="">No course</option>
+                {courses
+                  .filter((c) => !c.archived || c.id === block.courseId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code}{c.title ? ` · ${c.title}` : ''}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Location / Room (optional)" className="col-span-2 sm:col-span-1">
+                <Input
+                  value={block.location ?? ''}
+                  onChange={(e) => p.onPatch({ location: e.target.value || undefined })}
+                  placeholder={activeCourse?.room ? `${activeCourse.room} (usual room)` : 'e.g. Leacock 132, Gym'}
+                />
+              </Field>
+              <Field label="Weight (% of grade, optional)" className="col-span-2 sm:col-span-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={block.weight ?? ''}
+                  onChange={(e) => p.onPatch({ weight: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder="e.g. 25"
+                />
+              </Field>
+            </div>
+
+            <div className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] text-ink-3">
+              Exams appear prominently on your calendar with countdown badges that intensify as the exam approaches.
+            </div>
+          </>
+        )}
+
+        {isFree && (
+          <>
+            <Field label="Label">
+              <Input
+                data-autofocus
+                value={titleDraft}
+                onChange={(e) => {
+                  setTitleDraft(e.target.value)
+                  p.onPatch({ title: e.target.value || undefined })
+                }}
+                placeholder="Free time (or e.g. Gym, Dinner, Rest)"
+              />
+            </Field>
+            <div className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] text-ink-3">
+              Protected downtime · Nudge will never schedule study time here.
+            </div>
+          </>
+        )}
+
+        {isAppointment && (
+          <>
+            <Field label="Title">
+              <Input
+                data-autofocus
+                value={titleDraft}
+                onChange={(e) => {
+                  setTitleDraft(e.target.value)
+                  p.onPatch({ title: e.target.value || undefined })
+                }}
+                placeholder="Appointment (or e.g. Doctor, Dentist, Meeting)"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Location (optional)" className="col-span-2 sm:col-span-1">
+                <Input
+                  value={block.location ?? ''}
+                  onChange={(e) => p.onPatch({ location: e.target.value || undefined })}
+                  placeholder="e.g. Clinic, Room 302, Zoom"
+                />
+              </Field>
+              <Field label="Course (optional)" className="col-span-2 sm:col-span-1">
+                <Select
+                  value={block.courseId ?? ''}
+                  onChange={(e) => p.onPatch({ courseId: e.target.value || null })}
+                >
+                  <option value="">Not course-related</option>
+                  {courses
+                    .filter((c) => !c.archived)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.code}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+            </div>
+          </>
+        )}
+
+        {isOneOffClass && (
+          <>
+            <Field label="Class name">
+              <Input
+                data-autofocus
+                value={titleDraft}
+                onChange={(e) => {
+                  setTitleDraft(e.target.value)
+                  p.onPatch({ title: e.target.value || undefined })
+                }}
+                placeholder="e.g. Extra math tutorial"
+              />
+            </Field>
+            <Field label="Course (optional)">
+              <Select
+                value={block.courseId ?? '__new__'}
+                onChange={(e) => {
+                  const value = e.target.value
+                  p.onPatch({
+                    courseId: value === '__new__' ? null : value,
+                    courseCode: value === '__new__' ? block.courseCode : undefined,
+                  })
+                }}
+              >
+                <option value="__new__">New / not in schedule</option>
+                {courses
+                  .filter((c) => !c.archived)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code}{c.title ? ` · ${c.title}` : ''}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+            {!activeCourse && (
+              <Field label="Course code (optional)">
+                <Input
+                  value={block.courseCode ?? ''}
+                  onChange={(e) => p.onPatch({ courseCode: e.target.value || undefined })}
+                  onBlur={(e) => p.onPatch({ courseCode: e.target.value.trim().toUpperCase() || undefined })}
+                  placeholder="e.g. MATH 240"
+                />
+                <p className="mt-1.5 text-[11.5px] text-ink-3">
+                  Add a code to use the matching subject icon. Leave it blank for a generic one-off class icon.
+                </p>
+              </Field>
+            )}
+            <Field label="Location (optional)">
+              <Input
+                value={block.location ?? ''}
+                onChange={(e) => p.onPatch({ location: e.target.value || undefined })}
+                placeholder="e.g. Room 302, Zoom"
+              />
+            </Field>
+          </>
+        )}
+
+        {isStudy && (
+          <>
+            <Field label="What is this for?">
+              <Select
+                value={block.assignmentId ?? (block.courseId ? `c:${block.courseId}` : '')}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (!v) p.onPatch({ assignmentId: null, courseId: null, subtaskId: null })
+                  else if (v.startsWith('c:')) p.onPatch({ assignmentId: null, courseId: v.slice(2), subtaskId: null })
+                  else {
+                    const a = assignments.find((x) => x.id === v)
+                    p.onPatch({ assignmentId: v, courseId: a?.courseId ?? null, subtaskId: null })
+                  }
+                }}
+              >
+                <option value="">General study</option>
+                {courses
+                  .filter((c) => !c.archived)
+                  .map((c) => (
+                    <optgroup key={c.id} label={c.code}>
+                      <option value={`c:${c.id}`}>{c.code}: general</option>
+                      {(openTasks.get(c.id) ?? []).map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                {(openTasks.get('__none__') ?? []).length > 0 && (
+                  <optgroup label="No course">
+                    {(openTasks.get('__none__') ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+            </Field>
+
+            {activeAssignment && activeAssignment.subtasks.length > 0 && (
+              <Field label="Which step?">
+                <Select
+                  value={block.subtaskId ?? ''}
+                  onChange={(e) => p.onPatch({ subtaskId: e.target.value || null })}
+                >
+                  <option value="">No particular step</option>
+                  {activeAssignment.subtasks.map((s, i) => (
+                    <option key={s.id} value={s.id}>
+                      {i + 1}. {s.title}
+                      {s.done ? ' ✓' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+
+            <Field label="Label (optional)">
+              <Input
+                value={titleDraft}
+                onChange={(e) => {
+                  setTitleDraft(e.target.value)
+                  p.onPatch({ title: e.target.value || undefined })
+                }}
+                placeholder={activeStep?.title ?? activeAssignment?.title ?? activeCourse?.code ?? 'Study'}
+              />
+            </Field>
+
+            {activePlan && activePlan.length > 0 && (
+              <Field group label="Session plan">
+                <SegmentBar segments={activePlan} className="mb-2" />
+                <SegmentRows segments={activePlan} />
+                <button
+                  type="button"
+                  onClick={() => p.onPatch({ plan: undefined })}
+                  className="mt-2 text-[12px] text-ink-3 hover:text-ink transition-colors"
+                >
+                  Clear plan
+                </button>
+              </Field>
+            )}
+          </>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-line">
+          <Field label="Day">
+            <Input type="date" value={toDateInput(block.start)} onChange={(e) => setDay(e.target.value)} />
+          </Field>
+          <Field label="Starts">
+            <Input
+              type="time"
+              step={900}
+              value={toTimeInput(block.start)}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <Field group label="Duration">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {QUICK.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDuration(d)}
+                aria-pressed={minutes === d}
+                className={cx(
+                  'h-9 px-3 rounded-[10px] text-[13px] font-medium tnum transition-colors',
+                  minutes === d ? 'bg-invert-bg text-invert-ink' : 'bg-tint text-ink-2 hover:bg-tint-2',
+                )}
+              >
+                {d < 60 ? `${d}m` : d % 60 === 0 ? `${d / 60}h` : `${Math.floor(d / 60)}h ${d % 60}m`}
+              </button>
+            ))}
+            <Select
+              aria-label="Other duration"
+              value={DURATIONS.includes(minutes) ? String(minutes) : 'custom'}
+              onChange={(e) => e.target.value !== 'custom' && setDuration(Number(e.target.value))}
+              className="h-9 w-[112px] text-[13px]"
+            >
+              {!DURATIONS.includes(minutes) && <option value="custom">{fmtDuration(minutes)}</option>}
+              {DURATIONS.map((d) => (
+                <option key={d} value={d}>
+                  {fmtDuration(d, { long: true })}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </Field>
+      </div>
+    </Sheet>
+  )
+}
+```
+
+---
+
+### 4. Update Day Exception Sheet (`src/components/plan/DayExceptionSheet.tsx`)
+
+Remove `'exam'` from the day exception types, and clarify that "No classes" represents holidays, snow days, cancelled classes, or any day regular classes are not held.
+
+```typescript
+import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import type { PlannerEvent, ScheduleOverride } from '../../lib/types'
+import { useStore } from '../../lib/store'
+import { Button, Field, Input, Segmented, Select, Sheet } from '../ui'
+import { useToast } from '../../lib/toast'
+import { dayKey } from '../../lib/date'
+
+export interface DayExceptionSheetProps {
+  initialDate: string
+  initialType?: ExceptionType
+  existingEvent?: PlannerEvent | null
+  existingOverride?: ScheduleOverride | null
+  onClose: () => void
+}
+
+type ExceptionType = 'holiday' | 'break' | 'override'
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+const exceptionTypeLabel: Record<ExceptionType, string> = {
+  holiday: 'No classes / Holiday',
+  break: 'Reading break',
+  override: 'Timetable switch',
+}
+
+export function DayExceptionSheet({
+  initialDate,
+  initialType,
+  existingEvent,
+  existingOverride,
+  onClose,
+}: DayExceptionSheetProps) {
+  const store = useStore()
+  const { toast } = useToast()
+
+  const [type, setType] = useState<ExceptionType>(() => {
+    if (existingOverride) return 'override'
+    if (existingEvent?.kind === 'reading_break') return 'break'
+    return initialType === 'break' || initialType === 'override' ? initialType : 'holiday'
+  })
+
+  const [holidayTitle, setHolidayTitle] = useState(
+    existingEvent && existingEvent.kind === 'holiday' ? existingEvent.title : 'No classes',
+  )
+  const [holidayDate, setHolidayDate] = useState(
+    existingEvent ? dayKey(existingEvent.start) : initialDate,
+  )
+
+  const [breakTitle, setBreakTitle] = useState(
+    existingEvent && existingEvent.kind === 'reading_break' ? existingEvent.title : 'Reading break',
+  )
+  const [breakStart, setBreakStart] = useState(
+    existingEvent ? dayKey(existingEvent.start) : initialDate,
+  )
+  const [breakEnd, setBreakEnd] = useState(
+    existingEvent ? dayKey(existingEvent.end) : initialDate,
+  )
+
+  const [overrideDate, setOverrideDate] = useState(
+    existingOverride ? existingOverride.date : initialDate,
+  )
+  const [scheduleDay, setScheduleDay] = useState<string>(() => {
+    if (!existingOverride) return 'none'
+    return existingOverride.scheduleDay == null ? 'none' : String(existingOverride.scheduleDay)
+  })
+  const [overrideTitle, setOverrideTitle] = useState(existingOverride?.title ?? '')
+
+  const handleSave = () => {
+    const label =
+      type === 'holiday'
+        ? existingEvent
+          ? 'Calendar exception updated'
+          : 'Day off added'
+        : type === 'break'
+          ? existingEvent
+            ? 'Break updated'
+            : 'Break added'
+          : 'Schedule updated'
+
+    store.batch(label, (s) => {
+      if (type === 'holiday') {
+        const start = new Date(`${holidayDate}T00:00:00`).toISOString()
+        const end = new Date(`${holidayDate}T23:59:59.999`).toISOString()
+        if (existingEvent) {
+          s.updatePlannerEvent(existingEvent.id, {
+            title: holidayTitle.trim() || 'No classes',
+            kind: 'holiday',
+            start,
+            end,
+            allDay: true,
+          })
+        } else {
+          s.addPlannerEvent({
+            title: holidayTitle.trim() || 'No classes',
+            kind: 'holiday',
+            start,
+            end,
+            allDay: true,
+          })
+        }
+      } else if (type === 'break') {
+        const start = new Date(`${breakStart}T00:00:00`).toISOString()
+        const end = new Date(`${breakEnd}T23:59:59.999`).toISOString()
+        if (existingEvent) {
+          s.updatePlannerEvent(existingEvent.id, {
+            title: breakTitle.trim() || 'Reading break',
+            kind: 'reading_break',
+            start,
+            end,
+            allDay: true,
+          })
+        } else {
+          s.addPlannerEvent({
+            title: breakTitle.trim() || 'Reading break',
+            kind: 'reading_break',
+            start,
+            end,
+            allDay: true,
+          })
+        }
+      } else {
+        const sDay = scheduleDay === 'none' ? null : Number(scheduleDay)
+        s.upsertScheduleOverride({
+          date: overrideDate,
+          scheduleDay: sDay,
+          title: overrideTitle.trim() || undefined,
+        })
+      }
+    })
+    toast(label, { action: { label: 'Undo', run: () => store.undo() } })
+    onClose()
+  }
+
+  const handleDelete = () => {
+    const label = existingEvent ? 'Exception removed' : 'Schedule override removed'
+    store.batch(label, (s) => {
+      if (existingEvent) s.removePlannerEvent(existingEvent.id)
+      if (existingOverride) s.removeScheduleOverride(existingOverride.id)
+    })
+    toast(label, { action: { label: 'Undo', run: () => store.undo() } })
+    onClose()
+  }
+
+  const isEditing = !!(existingEvent || existingOverride)
+  const kindLabel = exceptionTypeLabel[type]
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title={`${isEditing ? 'Edit' : 'Add'} ${kindLabel.toLowerCase()}`}
+      footer={
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <Button size="sm" variant="danger" onClick={handleDelete} aria-label="Delete exception">
+              <Trash2 size={14} />
+            </Button>
+          )}
+          <div className="flex-1" />
+          <Button size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" onClick={handleSave}>
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {!isEditing && (
+          <Segmented
+            size="sm"
+            ariaLabel="Choose calendar exception kind"
+            value={type}
+            onChange={(v) => setType(v as ExceptionType)}
+            options={[
+              { value: 'holiday', label: 'No classes / Holiday' },
+              { value: 'break', label: 'Break' },
+              { value: 'override', label: 'Timetable switch' },
+            ]}
+            className="w-full [&>button]:flex-1"
+          />
+        )}
+
+        {type === 'holiday' && (
+          <>
+            <Field
+              label="Reason / Name"
+              hint="Use for holidays, snow days, cancelled classes, campus closures, or strike days when no classes are held."
+            >
+              <Input
+                data-autofocus
+                value={holidayTitle}
+                onChange={(e) => setHolidayTitle(e.target.value)}
+                placeholder="e.g. Snow day, Labour Day, Class cancelled"
+              />
+            </Field>
+            <Field label="Date">
+              <Input
+                type="date"
+                value={holidayDate}
+                onChange={(e) => setHolidayDate(e.target.value)}
+              />
+            </Field>
+          </>
+        )}
+
+        {type === 'break' && (
+          <>
+            <Field
+              label="Break name"
+              hint="Multi-day periods with no regular classes, such as reading week or spring break."
+            >
+              <Input
+                data-autofocus
+                value={breakTitle}
+                onChange={(e) => setBreakTitle(e.target.value)}
+                placeholder="e.g. Reading week, Spring break"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="From">
+                <Input
+                  type="date"
+                  value={breakStart}
+                  onChange={(e) => setBreakStart(e.target.value)}
+                />
+              </Field>
+              <Field label="To">
+                <Input
+                  type="date"
+                  value={breakEnd}
+                  onChange={(e) => setBreakEnd(e.target.value)}
+                />
+              </Field>
+            </div>
+          </>
+        )}
+
+        {type === 'override' && (
+          <>
+            <Field label="Date">
+              <Input
+                type="date"
+                value={overrideDate}
+                onChange={(e) => setOverrideDate(e.target.value)}
+              />
+            </Field>
+            <Field label="This date follows" hint="Use when a day switches schedules (e.g. Wednesday running a Monday timetable).">
+              <Select value={scheduleDay} onChange={(e) => setScheduleDay(e.target.value)}>
+                <option value="none">No classes</option>
+                {WEEKDAYS.map((name, i) => (
+                  <option key={name} value={i}>
+                    {name} timetable
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Label (optional)">
+              <Input
+                value={overrideTitle}
+                onChange={(e) => setOverrideTitle(e.target.value)}
+                placeholder="e.g. Monday schedule after holiday"
+              />
+            </Field>
+          </>
+        )}
+      </div>
+    </Sheet>
+  )
+}
+```
+
+---
+
+### 5. Update Toolbar in Plan View (`src/components/plan/Plan.tsx`)
+
+Remove the extra top-bar Exam button (since exams are now part of Add block), and rename the Holiday button to **No classes** with clear explanatory tooltips.
+
+In `src/components/plan/Plan.tsx`:
+
+```tsx
+          {/* Create block button */}
+          <Button
+            size="sm"
+            onClick={() => {
+              const today = new Date(now)
+              const h = Math.max(9, Math.min(19, today.getHours()))
+              today.setHours(h, 0, 0, 0)
+              const s = +today
+              const newBlock = store.addBlock({
+                kind: 'study',
+                start: new Date(s).toISOString(),
+                end: new Date(s + 60 * 60_000).toISOString(),
+              })
+              setSelected(newBlock.id)
+              undoable('Block created')
+            }}
+            title="Create study, exam, free time, or appointment block"
+          >
+            <Plus size={14} />
+            <span className="hidden sm:inline">Add block</span>
+          </Button>
+
+          {/* Calendar exception button */}
+          <Button
+            size="sm"
+            onClick={() => {
+              const defaultDate = days[0] ? new Date(days[0]) : new Date(now)
+              setDayException({ date: dayKey(defaultDate) })
+            }}
+            title="Add holiday, cancelled class, snow day, reading break, or timetable switch"
+          >
+            <CalendarOff size={14} />
+            <span className="hidden md:inline">No classes</span>
+          </Button>
+```
+
+---
+
+### 6. Redesign Exam Block UI with Progressive Intensity in Week Grid (`src/components/plan/WeekGrid.tsx`)
+
+In `WeekGrid.tsx`, update `BlockChip` and `PlannerEventChip` to support exam blocks with cohesive dimensions, structural alignment, and **progressive visual intensity** based on proximity to the exam date:
+- **Imminent (today / tomorrow / ≤ 1.5 days)**: Radiant warm amber/red glow border, pulsing indicator, intense high-contrast badge.
+- **Approaching (2 to 3 days)**: Vibrant warm amber border and distinct background sheen.
+- **Upcoming (4 to 7 days)**: Moderate amber boundary and accenting.
+- **Farther out (> 7 days)**: Crisp, calm, cohesive with UI palette and course styling.
+- **Completed / Past**: Gently dimmed with strike-through or muted accent.
+
+Update `BlockChip` and `PlannerEventChip` in `src/components/plan/WeekGrid.tsx`:
+
+```tsx
+// Inside BlockChip in src/components/plan/WeekGrid.tsx
+
+function BlockChip({
+  block,
+  course,
+  assignment,
+  top,
+  height,
+  left,
+  width,
+  colW,
+  dragging,
+  selected,
+  past,
+  now,
+  onKeyCommand,
+}: ChipProps & { now: number }) {
+  const kind = block.kind ?? 'study'
+  const isFree = kind === 'free'
+  const isAppointment = kind === 'appointment'
+  const isOneOffClass = kind === 'one_off_class'
+  const isExam = kind === 'exam'
+  const isStudy = !isFree && !isAppointment && !isOneOffClass && !isExam
+  const activeAssignment = isStudy ? assignment : undefined
+  const activeStep = isStudy ? stepOf(block, activeAssignment) : undefined
+  const activeLocation = (isAppointment || isOneOffClass || isExam) ? block.location : undefined
+  const locationPlace = activeLocation ? parsePlace(activeLocation) : null
+  const activeCourse = isFree ? undefined : course
+  const activeCourseCode = isOneOffClass && !activeCourse ? block.courseCode : undefined
+  const activePlan = isStudy ? block.plan : undefined
+  const done = !!block.done
+
+  const display = blockDisplay({
+    block: { ...block, kind },
+    course: activeCourse,
+    assignment: activeAssignment,
+    stepTitle: activeStep?.title,
+  })
+  const { title } = display
+
+  const effectiveColW = colW * (width / 100)
+  const isNarrow = effectiveColW < 112
+  const isUltraNarrow = effectiveColW < 82
+
+  const isTier1 = height < 26
+  const isTier2 = height >= 26 && height < 46
+  const isTier3 = height >= 46 && height < 68
+
+  const startMs = +new Date(block.start)
+  const endMs = +new Date(block.end)
+  const timeParts = formatTimeParts(startMs, endMs)
+
+  // Progressive intensity calculation for exams
+  const diffMs = startMs - now
+  const daysUntil = diffMs / 86_400_000
+  const isImminent = isExam && !past && daysUntil <= 1.5 && diffMs > 0
+  const isApproaching = isExam && !past && daysUntil > 1.5 && daysUntil <= 3.5
+  const isSoon = isExam && !past && daysUntil > 3.5 && daysUntil <= 7.5
+
+  const countdownText = isExam && !past
+    ? daysUntil <= 0.5
+      ? 'Today'
+      : daysUntil <= 1.5
+        ? 'Tomorrow'
+        : daysUntil <= 7
+          ? `in ${Math.ceil(daysUntil)}d`
+          : null
+    : null
+
+  const chipPadding = isTier1
+    ? (isUltraNarrow ? '1px 3px' : isNarrow ? '1px 4px' : '1px 5px')
+    : isTier2
+      ? (isUltraNarrow ? '2px 3.5px' : isNarrow ? '2px 4px' : '2.5px 6px')
+      : isTier3
+        ? (isUltraNarrow ? '2.5px 4px' : isNarrow ? '2.5px 5px' : '3px 7px')
+        : (height >= 120 ? (isNarrow ? '5px 5px' : '6px 7px') : (isNarrow ? '3.5px 5px' : '4px 7px'))
+
+  const handleH = isTier1 ? 3 : isTier2 ? 4 : isTier3 ? 5 : Math.max(5, Math.min(8, Math.floor(height / 6)))
+
+  // Distinct background and border colors for exam blocks with progressive intensity
+  let bg = isFree && !activeCourse
+    ? 'var(--c-surface-2)'
+    : solidOf(activeCourse, dragging ? 24 : 14)
+
+  let border = isFree && !activeCourse
+    ? 'inset 0 0 0 1px var(--c-line-2)'
+    : `inset 0 0 0 1px ${edgeOf(activeCourse, dragging ? 46 : 34)}`
+
+  if (isExam) {
+    if (past) {
+      bg = 'color-mix(in srgb, var(--c-warn) 6%, var(--c-surface-2))'
+      border = 'inset 0 0 0 1px var(--c-line-2)'
+    } else if (isImminent) {
+      bg = 'linear-gradient(135deg, color-mix(in srgb, var(--c-warn) 30%, var(--c-surface)), color-mix(in srgb, var(--c-critical) 16%, var(--c-surface)))'
+      border = 'inset 0 0 0 1.5px var(--c-warn), 0 2px 10px -2px rgba(245, 158, 11, 0.45)'
+    } else if (isApproaching) {
+      bg = 'linear-gradient(135deg, color-mix(in srgb, var(--c-warn) 20%, var(--c-surface)), color-mix(in srgb, var(--c-warn) 12%, var(--c-surface)))'
+      border = 'inset 0 0 0 1.5px color-mix(in srgb, var(--c-warn) 75%, var(--c-line-2))'
+    } else if (isSoon) {
+      bg = 'color-mix(in srgb, var(--c-warn) 14%, var(--c-surface))'
+      border = 'inset 0 0 0 1px color-mix(in srgb, var(--c-warn) 60%, var(--c-line-2))'
+    } else {
+      bg = activeCourse ? solidOf(activeCourse, 14) : 'color-mix(in srgb, var(--c-warn) 9%, var(--c-surface))'
+      border = 'inset 0 0 0 1px color-mix(in srgb, var(--c-warn) 45%, var(--c-line-2))'
+    }
+  }
+
+  const renderLeadingIcon = (size: number) => {
+    if (done) return <Check size={size} className="shrink-0 text-ink-2" />
+    if (isExam) {
+      return (
+        <ClipboardCheck
+          size={size}
+          className={cx(
+            'shrink-0',
+            isImminent ? 'text-[var(--c-critical-ink)]' : 'text-[var(--c-warn)]',
+          )}
+        />
+      )
+    }
+    if (activeCourse) return <CourseDot course={activeCourse} size={size} className="shrink-0" />
+    if (activeCourseCode?.trim()) {
+      return createElement(subjectIcon(activeCourseCode), { size, className: 'shrink-0 text-ink-2', 'aria-hidden': true })
+    }
+    if (isFree) return <Coffee size={size} className="shrink-0 text-ink-2" />
+    if (isAppointment) return <Calendar size={size} className="shrink-0 text-ink-2" />
+    if (isOneOffClass) return <School size={size} className="shrink-0 text-ink-2" aria-hidden="true" />
+    return <BookOpen size={size} className="shrink-0 text-ink-2" />
+  }
+
+  const kindPillLabel = isExam
+    ? 'Exam'
+    : isAppointment
+      ? 'Appt'
+      : isFree
+        ? 'Free'
+        : isOneOffClass
+          ? 'One-off'
+          : 'Study'
+
+  const contextSubtitle = (activeStep && title !== activeStep.title)
+    ? activeStep.title
+    : (activeAssignment && title !== activeAssignment.title)
+      ? activeAssignment.title
+      : null
+
+  return (
+    <div
+      data-block-id={block.id}
+      role="button"
+      tabIndex={0}
+      title={`${title}\n${timeParts.fullRange}${block.weight != null ? `\nWeight: ${block.weight}%` : ''}${activeLocation ? `\nLocation: ${activeLocation}` : ''}${done ? '\nStatus: Done' : ''}`}
+      aria-label={`${title}, ${timeParts.start}–${timeParts.end}${done ? ', done' : ''}`}
+      onKeyDown={(e) => {
+        const k = e.key
+        if (k === 'ArrowUp' || k === 'ArrowDown') {
+          e.preventDefault()
+          onKeyCommand(k === 'ArrowUp' ? 'up' : 'down', e.shiftKey)
+        } else if (k === 'Delete' || k === 'Backspace') {
+          e.preventDefault()
+          onKeyCommand('delete', false)
+        } else if (k === 'Enter') {
+          e.preventDefault()
+          onKeyCommand('open', false)
+        } else if (k === ' ') {
+          e.preventDefault()
+          onKeyCommand('done', false)
+        }
+      }}
+      className={cx(
+        'block-grab absolute overflow-hidden group select-none rounded-[8px]',
+        'transition-[box-shadow,opacity,transform] duration-150 ease-[var(--ease-out-soft)]',
+        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink',
+        dragging ? 'z-40 shadow-pop cursor-grabbing' : 'cursor-grab hover:shadow-card hover:brightness-[0.98]',
+        selected && !dragging && 'ring-2 ring-ink ring-offset-1 ring-offset-surface z-20',
+        done && 'opacity-65',
+        past && !done && 'opacity-80',
+        isExam && isImminent && !dragging && 'ring-1 ring-[var(--c-warn)]/60',
+      )}
+      style={{
+        ...itemFrame(left, width),
+        top,
+        height,
+        padding: chipPadding,
+        background: bg,
+        boxShadow: border,
+      }}
+    >
+      <div
+        data-handle="start"
+        style={{ height: handleH }}
+        className="absolute inset-x-0 top-0 cursor-ns-resize z-10 flex items-start justify-center pointer-events-auto"
+      >
+        <span className="mt-[1px] h-[2px] w-5 rounded-full bg-ink/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+
+      <div className="h-full pointer-events-none min-w-0">
+        {isTier1 ? (
+          <div className="h-full flex items-center justify-between gap-1.5 min-w-0">
+            <div className="flex items-center gap-1 min-w-0 flex-1">
+              {renderLeadingIcon(10)}
+              <span className={cx('text-[10px] font-bold text-ink leading-none truncate min-w-0', done && 'line-through opacity-80')}>
+                {title}
+              </span>
+            </div>
+            {!isUltraNarrow && (
+              <TypePill
+                label={kindPillLabel}
+                tone={isExam ? (isImminent ? 'warn' : 'default') : 'default'}
+                size="xs"
+              />
+            )}
+          </div>
+        ) : isTier2 ? (
+          <div className="h-full flex flex-col justify-center gap-0.5 min-w-0">
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="flex items-center gap-1 min-w-0 flex-1">
+                {renderLeadingIcon(10.5)}
+                {activeCourse && title !== activeCourse.code && !isNarrow && (
+                  <span className="text-[10px] font-bold text-ink-2 tracking-tight shrink-0">{activeCourse.code}</span>
+                )}
+                <span className={cx('text-[10px] font-bold text-ink leading-tight truncate min-w-0', done && 'line-through opacity-80')}>
+                  {title}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                {countdownText && (
+                  <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">
+                    {countdownText}
+                  </span>
+                )}
+                <TypePill
+                  label={kindPillLabel}
+                  tone={isExam ? (isImminent ? 'warn' : 'default') : 'default'}
+                  size="xs"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-[9px] font-medium text-ink-2 leading-tight min-w-0">
+              {locationPlace ? (
+                <span className="truncate min-w-0">
+                  · {isNarrow && locationPlace.shortBuilding ? locationPlace.shortBuilding : (locationPlace.building || locationPlace.room)}
+                </span>
+              ) : contextSubtitle ? (
+                <span className="truncate min-w-0">{contextSubtitle}</span>
+              ) : (
+                <span className="truncate min-w-0 font-semibold tnum text-ink-2">{timeParts.start}–{timeParts.end}</span>
+              )}
+            </div>
+          </div>
+        ) : isTier3 ? (
+          <div className="h-full flex flex-col justify-center gap-[2px] min-w-0">
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="flex items-center gap-1 min-w-0 flex-1 text-ink-2">
+                {renderLeadingIcon(10.5)}
+                {activeCourse && (
+                  <span className="text-[10px] font-bold text-ink-2 tracking-tight truncate">{activeCourse.code}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                {countdownText && (
+                  <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">
+                    {countdownText}
+                  </span>
+                )}
+                <TypePill
+                  label={kindPillLabel}
+                  tone={isExam ? (isImminent ? 'warn' : 'default') : 'default'}
+                  size="xs"
+                />
+              </div>
+            </div>
+
+            <div className={cx('text-[10px] font-bold text-ink leading-tight truncate min-w-0', done && 'line-through opacity-80')}>
+              {title}
+            </div>
+
+            <div className="flex items-center gap-1 text-[9px] font-medium leading-tight min-w-0">
+              {locationPlace ? (
+                <span className="truncate min-w-0 text-ink-2">
+                  {isNarrow && locationPlace.shortBuilding ? locationPlace.shortBuilding : (locationPlace.building || locationPlace.room)}
+                </span>
+              ) : contextSubtitle ? (
+                <span className="truncate min-w-0 text-ink-2 font-medium">{contextSubtitle}</span>
+              ) : (
+                <span className="truncate min-w-0 font-semibold text-ink-2 tnum">{timeParts.start}–{timeParts.end}</span>
+              )}
+              {isExam && block.weight != null && (
+                <span className="ml-auto text-[8.5px] font-semibold text-ink-3 shrink-0">{block.weight}%</span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col justify-start gap-1 min-w-0">
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="flex items-center gap-1 min-w-0 flex-1 text-ink-2">
+                {renderLeadingIcon(10.5)}
+                {activeCourse && <span className="text-[10.5px] font-bold text-ink-2 tracking-tight truncate">{activeCourse.code}</span>}
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                {countdownText && (
+                  <span className="text-[9px] font-bold text-[var(--c-warn)] uppercase tracking-tight">
+                    {countdownText}
+                  </span>
+                )}
+                <TypePill
+                  label={kindPillLabel}
+                  tone={isExam ? (isImminent ? 'warn' : 'default') : 'default'}
+                  size={isNarrow ? 'xs' : 'sm'}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-1 min-w-0">
+              <div
+                className={cx(
+                  'font-bold text-ink leading-[1.25] min-w-0 break-normal',
+                  isNarrow ? 'text-[10px] tracking-tight' : 'text-[10.5px]',
+                  done && 'line-through opacity-80',
+                  height < 55 ? 'truncate' : height < 95 ? 'line-clamp-2' : 'line-clamp-3',
+                )}
+              >
+                {title}
+              </div>
+            </div>
+
+            {locationPlace ? (
+              <div className="flex items-start gap-1 text-[9px] text-ink-2 leading-tight min-w-0">
+                <MapPin size={9.5} className="shrink-0 text-ink-3 mt-[1px]" />
+                <span
+                  className={cx(
+                    'font-medium text-ink-2 min-w-0 break-normal',
+                    height < 120 ? 'line-clamp-2' : 'line-clamp-3',
+                  )}
+                  title={locationPlace.building}
+                >
+                  {locationPlace.building || locationPlace.room}
+                </span>
+              </div>
+            ) : contextSubtitle ? (
+              <div className="text-[9.5px] font-medium text-ink-2 leading-tight truncate min-w-0">
+                {contextSubtitle}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 text-[9px] font-medium text-ink-3 tnum leading-tight min-w-0 mt-auto">
+              <span className="font-semibold text-ink-2 shrink-0">{timeParts.start}–{timeParts.end}</span>
+              <span className="text-[8.5px] uppercase tracking-wider font-semibold">
+                {timeParts.duration}
+              </span>
+            </div>
+
+            {height >= 110 && isExam && block.weight != null && (
+              <div className="inline-flex items-center h-[17px] px-1.5 rounded-full bg-amber-500/15 text-[8px] font-bold text-[var(--c-warn)] w-fit mt-0.5 uppercase tracking-wider">
+                {block.weight}% of grade
+              </div>
+            )}
+
+            {height >= 120 && isStudy && activeAssignment?.weight != null && (
+              <div className="inline-flex items-center h-[17px] px-1.5 rounded-full bg-black/5 dark:bg-white/10 text-[8px] font-bold text-ink-2 w-fit mt-0.5 uppercase tracking-wider">
+                {activeAssignment.weight}% of grade
+              </div>
+            )}
+
+            {height >= 105 && activePlan && activePlan.length > 1 && (
+              <div className="mt-0.5">
+                <SegmentBar segments={activePlan} height={3} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div
+        data-handle="end"
+        style={{ height: handleH }}
+        className="absolute inset-x-0 bottom-0 cursor-ns-resize z-10 flex items-end justify-center pointer-events-auto"
+      >
+        <span className="mb-[1px] h-[2px] w-5 rounded-full bg-ink/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </div>
+  )
+}
+```
+
+And in `WeekGrid.tsx`, ensure `now={now}` is passed to `BlockChip` and `PlannerEventChip`:
+
+```tsx
+<BlockChip
+  key={block.id}
+  block={block}
+  course={courseForBlock(block)}
+  assignment={block.assignmentId ? assignmentById.get(block.assignmentId) : undefined}
+  top={top(startMin)}
+  height={height(startMin, endMin)}
+  left={(col / cols) * 100}
+  width={(1 / cols) * 100}
+  colW={colW}
+  dragging={false}
+  selected={selectedId === block.id}
+  past={+new Date(block.end) < now}
+  now={now}
+  onKeyCommand={(cmd, shift) => {
+    if (cmd === 'delete') onDeleteBlock(block.id)
+    else if (cmd === 'done') onToggleDone(block.id)
+    else if (cmd === 'open') onSelect(block.id)
+    else onNudgeBlock(block.id, cmd === 'up' ? -15 : 15, shift)
+  }}
+/>
+```
+
+Also update `PlannerEventChip` in `WeekGrid.tsx` with progressive intensity for `event.kind === 'exam'`:
+
+```tsx
+function PlannerEventChip({
+  event,
+  course,
+  top,
+  height,
+  left,
+  width,
+  colW,
+  now = Date.now(),
+  dragging = false,
+  onOpen,
+}: {
+  event: PlannerEvent
+  course?: Course
+  top: number
+  height: number
+  left: number
+  width: number
+  colW: number
+  now?: number
+  dragging?: boolean
+  onOpen: () => void
+}) {
+  const isClass = event.kind === 'custom_class'
+  const isExam = event.kind === 'exam'
+  const Icon = isClass ? School : isExam ? ClipboardCheck : event.kind === 'blocked_time' ? Calendar : CalendarOff
+  const kindLabel = isClass ? 'Class' : isExam ? 'Exam' : (colW * (width / 100) < 112 ? 'Appt' : 'Appointment')
+  const place = event.room ? parsePlace(event.room) : null
+
+  const effectiveColW = colW * (width / 100)
+  const isNarrow = effectiveColW < 112
+  const isUltraNarrow = effectiveColW < 82
+
+  const isTier1 = height < 26
+  const isTier2 = height >= 26 && height < 46
+  const isTier3 = height >= 46 && height < 68
+
+  const startMs = +new Date(event.start)
+  const endMs = +new Date(event.end)
+  const past = endMs < now
+
+  const diffMs = startMs - now
+  const daysUntil = diffMs / 86_400_000
+  const isImminent = isExam && !past && daysUntil <= 1.5 && diffMs > 0
+  const isApproaching = isExam && !past && daysUntil > 1.5 && daysUntil <= 3.5
+
+  const countdownText = isExam && !past
+    ? daysUntil <= 0.5
+      ? 'Today'
+      : daysUntil <= 1.5
+        ? 'Tomorrow'
+        : daysUntil <= 7
+          ? `in ${Math.ceil(daysUntil)}d`
+          : null
+    : null
+
+  const timeParts = event.allDay
+    ? { start: 'All day', end: '', duration: '', fullRange: 'All day' }
+    : formatTimeParts(startMs, endMs)
+
+  const chipPadding = isTier1
+    ? (isUltraNarrow ? '1px 3px' : isNarrow ? '1px 4px' : '1px 5px')
+    : isTier2
+      ? (isUltraNarrow ? '2px 3.5px' : isNarrow ? '2px 4px' : '2.5px 6px')
+      : isTier3
+        ? (isUltraNarrow ? '2.5px 4px' : isNarrow ? '2.5px 5px' : '3px 7px')
+        : (height >= 120 ? (isNarrow ? '5px 5px' : '6px 7px') : (isNarrow ? '3.5px 5px' : '4px 7px'))
+
+  const handleH = isTier1 ? 3 : isTier2 ? 4 : isTier3 ? 5 : Math.max(5, Math.min(8, Math.floor(height / 6)))
+
+  return (
+    <button
+      type="button"
+      data-planner-event-id={event.id}
+      onClick={onOpen}
+      aria-label={`${kindLabel}: ${event.title}, ${timeParts.start}–${timeParts.end}${event.room ? `, ${event.room}` : ''}`}
+      title={`${kindLabel}: ${event.title}\n${timeParts.fullRange}${event.room ? `\nLocation: ${event.room}` : ''}`}
+      className={cx(
+        'block-grab group absolute overflow-hidden text-left rounded-[8px] transition-all duration-150',
+        'border text-ink select-none',
+        isExam
+          ? isImminent
+            ? 'border-[var(--c-warn)] bg-gradient-to-br from-amber-500/25 to-rose-500/15 shadow-md ring-1 ring-[var(--c-warn)]/60'
+            : isApproaching
+              ? 'border-[var(--c-warn)]/80 bg-amber-500/15 shadow-xs'
+              : 'border-[var(--c-warn)]/50 bg-amber-500/10 shadow-xs'
+          : 'border-line-2 bg-surface-2 hover:bg-tint hover:border-line-2/80',
+        dragging && 'z-40 shadow-pop cursor-grabbing',
+        !dragging && 'cursor-grab',
+      )}
+      style={{
+        ...itemFrame(left, width),
+        top,
+        height,
+        padding: chipPadding,
+      }}
+    >
+      <div
+        data-handle="start"
+        style={{ height: handleH }}
+        className="absolute inset-x-0 top-0 cursor-ns-resize z-10 flex items-start justify-center pointer-events-auto"
+      >
+        <span className="mt-[1px] h-[2px] w-5 rounded-full bg-ink/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+
+      <div className="h-full pointer-events-none min-w-0">
+        <div className="flex items-center justify-between gap-1 min-w-0">
+          <div className="flex items-center gap-1 min-w-0 flex-1">
+            {course ? (
+              <CourseDot course={course} size={11} className="shrink-0" />
+            ) : (
+              <Icon size={11} className={cx('shrink-0', isExam ? 'text-[var(--c-warn)]' : 'text-ink-2')} />
+            )}
+            <span className="text-[10px] font-bold text-ink tracking-tight truncate min-w-0 leading-tight">
+              {event.title}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0 ml-auto">
+            {countdownText && (
+              <span className="text-[8.5px] font-bold text-[var(--c-warn)] uppercase tracking-tight">
+                {countdownText}
+              </span>
+            )}
+            {!isNarrow && (
+              <TypePill
+                label={isExam ? 'EXAM' : kindLabel}
+                tone={isExam ? 'warn' : 'default'}
+                size="xs"
+              />
+            )}
+          </div>
+        </div>
+
+        {height >= 40 && (
+          <div className="flex items-center gap-1 text-[9px] font-medium text-ink-2 tnum leading-tight min-w-0 mt-0.5">
+            {place ? (
+              <span className="truncate min-w-0">
+                · {place.shortBuilding || place.building || place.room}
+              </span>
+            ) : (
+              <span className="truncate min-w-0 font-semibold">{timeParts.start}{timeParts.end ? `–${timeParts.end}` : ''}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div
+        data-handle="end"
+        style={{ height: handleH }}
+        className="absolute inset-x-0 bottom-0 cursor-ns-resize z-10 flex items-end justify-center pointer-events-auto"
+      >
+        <span className="mb-[1px] h-[2px] w-5 rounded-full bg-ink/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </button>
+  )
+}
+```
+
+---
+
+### 7. Support Exam Blocks in Day Schedule & Horizon (`src/components/schedule/DaySchedule.tsx` & `src/components/today/Horizon.tsx`)
+
+In `src/components/schedule/DaySchedule.tsx`:
+Add exam block support to `Row` and count them in `todayMustBeThere`:
+
+```tsx
+// Inside Row() in src/components/schedule/DaySchedule.tsx:
+if (b.kind === 'exam') {
+  return (
+    <li
+      className={cx(wrap, 'cursor-pointer', past && 'opacity-65')}
+      title={`${display.title} · ${timeLine}${b.location ? ` · ${b.location}` : ''}`}
+      onClick={cardClick(() => onOpenBlock(b.id))}
+    >
+      <TimeCell at={entry.start} muted={past} />
+      <span className="w-[18px] shrink-0 grid place-items-center h-[17px]">
+        {entry.course ? <CourseDot course={entry.course} /> : <ClipboardCheck size={14} className="text-[var(--c-warn)]" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={cx('flex items-baseline gap-1.5 min-w-0', past ? 'text-ink-3' : 'text-ink')}>
+          <span className="text-[13px] font-medium leading-[17px] truncate">{display.title}</span>
+          <span className="ui-eyebrow ui-eyebrow-flag shrink-0">EXAM</span>
+          {b.weight != null && <span className="text-[11px] text-ink-3 font-normal shrink-0">{b.weight}%</span>}
+        </p>
+        <ScheduleMeta minutes={minutes} place={entry.place} className="mt-0.5" />
+      </div>
+      {live ? <NowTag /> : isNext ? <NextTag /> : null}
+    </li>
+  )
+}
+```
+
+And in `src/components/today/Horizon.tsx`:
+Include exam blocks in the `useHorizon` hook:
+
+```tsx
+// In useHorizon() in src/components/today/Horizon.tsx:
+const blocks = useStore((s) => s.blocks)
+for (const examBlock of blocks.filter((b) => b.kind === 'exam')) {
+  const at = +new Date(examBlock.start)
+  const days = daysBetween(now, at)
+  if (days < 0 || days > TO_DAYS) continue
+  const course = examBlock.courseId ? courseById.get(examBlock.courseId) : undefined
+  out.push({
+    id: `block-exam:${examBlock.id}`,
+    at,
+    title: examBlock.title || (course ? `${course.code} Exam` : 'Exam'),
+    course,
+    note: `${fmtDay(at)}${examBlock.weight != null ? ` · ${examBlock.weight}%` : ''}${examBlock.location ? ` · ${examBlock.location}` : ''}`,
+    exam: true,
+  })
+}
+```
+
+---
+
+### Summary of Improvements
+
+1. **Exam is a first-class block under Add Block**: Inside `BlockSheet`, users can select **Exam** as a tab alongside Study, Free time, Appointment, and One-off class. It captures exam title, course affiliation, location/room, weight percentage, date, and time.
+2. **Holiday / No Classes is clarified**: The "Exam" tab was removed from `DayExceptionSheet`. The option is now clearly labeled **No classes / Holiday**, with descriptions emphasizing its use for snow days, cancelled class sessions, teacher strikes, and reading breaks.
+3. **Progressive Visual Intensity on the Calendar**:
+   - Matches the exact dimensions, border radius, and resizing interactions of all other blocks.
+   - Distinct amber glow border and `EXAM` pill badge.
+   - As the exam date draws closer (≤ 3 days and ≤ 1 day), the background warmth and amber/red border intensify, culminating in an animated urgency indicator and "Today" / "Tomorrow" countdown tag.

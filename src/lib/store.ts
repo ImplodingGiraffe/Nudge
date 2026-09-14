@@ -919,6 +919,7 @@ export const useStore = create<NudgeStore>()(
             title: input.title,
             courseCode: input.courseCode?.trim().toUpperCase() || undefined,
             location: input.location,
+            weight: input.weight,
             start: input.start,
             end: input.end,
             done: input.done ?? false,
@@ -927,7 +928,14 @@ export const useStore = create<NudgeStore>()(
             sourceDate: input.sourceDate,
             createdAt: new Date().toISOString(),
           }
-          const label = b.kind === 'free' ? 'Added free time' : b.kind === 'appointment' ? 'Added appointment' : 'Added study block'
+          const label =
+            b.kind === 'free'
+              ? 'Added free time'
+              : b.kind === 'appointment'
+                ? 'Added appointment'
+                : b.kind === 'exam'
+                  ? 'Added exam'
+                  : 'Added study block'
           mutate(label, (s) => ({ blocks: [...s.blocks, b] }))
           return b
         },
@@ -943,6 +951,7 @@ export const useStore = create<NudgeStore>()(
             title: item.title,
             courseCode: item.courseCode?.trim().toUpperCase() || undefined,
             location: item.location,
+            weight: item.weight,
             start: item.start,
             end: item.end,
             done: item.done ?? false,

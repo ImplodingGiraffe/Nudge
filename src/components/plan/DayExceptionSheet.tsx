@@ -14,27 +14,14 @@ export interface DayExceptionSheetProps {
   onClose: () => void
 }
 
-type ExceptionType = 'holiday' | 'break' | 'override' | 'exam'
+type ExceptionType = 'holiday' | 'break' | 'override'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const exceptionTypeLabel: Record<ExceptionType, string> = {
-  holiday: 'Holiday / no classes',
+  holiday: 'No classes / Holiday',
   break: 'Break',
   override: 'Timetable switch',
-  exam: 'Exam',
-}
-
-const toDateInput = (iso: string) => {
-  const d = new Date(iso)
-  const pad = (n: number) => `${n}`.padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-const toTimeInput = (iso: string) => {
-  const d = new Date(iso)
-  const pad = (n: number) => `${n}`.padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export function DayExceptionSheet({
@@ -45,18 +32,16 @@ export function DayExceptionSheet({
   onClose,
 }: DayExceptionSheetProps) {
   const store = useStore()
-  const courses = useStore((s) => s.courses)
   const { toast } = useToast()
 
   const [type, setType] = useState<ExceptionType>(() => {
     if (existingOverride) return 'override'
-    if (existingEvent?.kind === 'exam') return 'exam'
     if (existingEvent?.kind === 'reading_break') return 'break'
-    return initialType ?? 'holiday'
+    return initialType === 'break' || initialType === 'override' ? initialType : 'holiday'
   })
 
   const [holidayTitle, setHolidayTitle] = useState(
-    existingEvent && existingEvent.kind === 'holiday' ? existingEvent.title : 'Holiday',
+    existingEvent && existingEvent.kind === 'holiday' ? existingEvent.title : 'No classes',
   )
   const [holidayDate, setHolidayDate] = useState(
     existingEvent ? dayKey(existingEvent.start) : initialDate,
@@ -72,28 +57,6 @@ export function DayExceptionSheet({
     existingEvent ? dayKey(existingEvent.end) : initialDate,
   )
 
-  const [examTitle, setExamTitle] = useState(
-    existingEvent?.kind === 'exam' ? existingEvent.title : 'Exam',
-  )
-  const [examCourseId, setExamCourseId] = useState(
-    existingEvent?.kind === 'exam' ? existingEvent.courseId ?? '' : '',
-  )
-  const [examDate, setExamDate] = useState(
-    existingEvent?.kind === 'exam' ? toDateInput(existingEvent.start) : initialDate,
-  )
-  const [examStart, setExamStart] = useState(
-    existingEvent?.kind === 'exam' ? toTimeInput(existingEvent.start) : '09:00',
-  )
-  const [examEnd, setExamEnd] = useState(
-    existingEvent?.kind === 'exam' ? toTimeInput(existingEvent.end) : '12:00',
-  )
-  const [examRoom, setExamRoom] = useState(
-    existingEvent?.kind === 'exam' ? existingEvent.room ?? '' : '',
-  )
-  const [examWeight, setExamWeight] = useState(
-    existingEvent?.kind === 'exam' && existingEvent.weight != null ? String(existingEvent.weight) : '',
-  )
-
   const [overrideDate, setOverrideDate] = useState(
     existingOverride ? existingOverride.date : initialDate,
   )
@@ -107,17 +70,13 @@ export function DayExceptionSheet({
     const label =
       type === 'holiday'
         ? existingEvent
-          ? 'Holiday updated'
-          : 'Holiday added'
+          ? 'Calendar exception updated'
+          : 'Day off added'
         : type === 'break'
           ? existingEvent
             ? 'Break updated'
             : 'Break added'
-          : type === 'exam'
-            ? existingEvent
-              ? 'Exam updated'
-              : 'Exam added'
-            : 'Schedule updated'
+          : 'Schedule updated'
 
     store.batch(label, (s) => {
       if (type === 'holiday') {
@@ -125,7 +84,7 @@ export function DayExceptionSheet({
       const end = new Date(`${holidayDate}T23:59:59.999`).toISOString()
       if (existingEvent) {
         s.updatePlannerEvent(existingEvent.id, {
-          title: holidayTitle.trim() || 'Holiday',
+          title: holidayTitle.trim() || 'No classes',
           kind: 'holiday',
           start,
           end,
@@ -133,7 +92,7 @@ export function DayExceptionSheet({
         })
       } else {
         s.addPlannerEvent({
-          title: holidayTitle.trim() || 'Holiday',
+          title: holidayTitle.trim() || 'No classes',
           kind: 'holiday',
           start,
           end,
@@ -159,25 +118,6 @@ export function DayExceptionSheet({
           end,
           allDay: true,
         })
-      }
-    } else if (type === 'exam') {
-      const start = new Date(`${examDate}T${examStart}:00`).toISOString()
-      const end = new Date(`${examDate}T${examEnd}:00`).toISOString()
-      const weight = examWeight.trim() === '' ? undefined : Number(examWeight)
-      const patch = {
-        title: examTitle.trim() || 'Exam',
-        kind: 'exam' as const,
-        start,
-        end,
-        allDay: false,
-        courseId: examCourseId || null,
-        room: examRoom.trim() || undefined,
-        weight: Number.isFinite(weight) ? weight : undefined,
-      }
-      if (existingEvent) {
-        s.updatePlannerEvent(existingEvent.id, patch)
-      } else {
-        s.addPlannerEvent(patch)
       }
     } else {
       const sDay = scheduleDay === 'none' ? null : Number(scheduleDay)
@@ -231,11 +171,11 @@ export function DayExceptionSheet({
         {!isEditing && (
           <Segmented
             size="sm"
-            ariaLabel="Choose exception kind"
+            ariaLabel="Choose calendar exception kind"
             value={type}
             onChange={(v) => setType(v as ExceptionType)}
             options={[
-              { value: 'holiday', label: 'Holiday / no classes' },
+              { value: 'holiday', label: 'No classes / Holiday' },
               { value: 'break', label: 'Break' },
               { value: 'override', label: 'Timetable switch' },
             ]}
@@ -245,17 +185,17 @@ export function DayExceptionSheet({
 
         {type === 'holiday' && (
           <>
-            <Field label="Holiday or no-classes day">
+            <Field
+              label="Reason / Name"
+              hint="Use for holidays, snow days, cancelled classes, campus closures, or strike days when no classes are held."
+            >
               <Input
                 data-autofocus
                 value={holidayTitle}
                 onChange={(e) => setHolidayTitle(e.target.value)}
-                placeholder="e.g. Labour Day, cancelled classes, snow day"
+                placeholder="e.g. Snow day, Labour Day, Class cancelled"
               />
             </Field>
-            <p className="-mt-2 text-[12px] leading-relaxed text-ink-3">
-              Use this for holidays, cancelled class days, snow days, or any other day with no regular classes.
-            </p>
             <Field label="Date">
               <Input
                 type="date"
@@ -292,60 +232,6 @@ export function DayExceptionSheet({
                 />
               </Field>
             </div>
-          </>
-        )}
-
-        {type === 'exam' && (
-          <>
-            <Field label="Title">
-              <Input
-                data-autofocus
-                value={examTitle}
-                onChange={(e) => setExamTitle(e.target.value)}
-                placeholder="e.g. Midterm exam"
-              />
-            </Field>
-            <Field label="Course">
-              <Select value={examCourseId} onChange={(e) => setExamCourseId(e.target.value)}>
-                <option value="">No course</option>
-                {courses
-                  .filter((course) => !course.archived || course.id === examCourseId)
-                  .map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.code}{course.title ? ` · ${course.title}` : ''}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-            <Field label="Date">
-              <Input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Starts at">
-                <Input type="time" value={examStart} onChange={(e) => setExamStart(e.target.value)} />
-              </Field>
-              <Field label="Ends at">
-                <Input type="time" value={examEnd} onChange={(e) => setExamEnd(e.target.value)} />
-              </Field>
-            </div>
-            <Field label="Room">
-              <Input
-                value={examRoom}
-                onChange={(e) => setExamRoom(e.target.value)}
-                placeholder="e.g. Room 302"
-              />
-            </Field>
-            <Field label="Weight">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={examWeight}
-                onChange={(e) => setExamWeight(e.target.value)}
-                placeholder="e.g. 25"
-              />
-            </Field>
           </>
         )}
 
