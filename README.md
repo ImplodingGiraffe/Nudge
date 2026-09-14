@@ -1,3 +1,4 @@
+<img width="1440" height="786" alt="Screenshot 2026-09-13 at 7 35 57 PM" src="https://github.com/user-attachments/assets/bad4ff3a-402d-437d-a309-7eb1847fc008" />
 # Nudge
 
 Nudge is a study planner built for college students to keep track of courses, deadlines, study time, notes, and all the other little things. It's designed to be fairly intuitive and has features that are intended to help procrastinators (like me) keep their personal and academic life organized. It also has an optional AI assistant (more below).
