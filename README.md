@@ -6,8 +6,6 @@
 \
 Nudge is a study planner built for college students to keep track of courses, deadlines, study time, notes, and all the other little things. It's designed to be fairly intuitive and has features that are intended to help procrastinators (like me) keep their personal and academic life organized. It also has an optional AI assistant (more below).
 
-Although the original goal was for Nudge to stay as minimal as possible, scope creep wormed its insidious tendrils through my codebase.
-
 You can use the live version over at [nudge.neocities.org](https://nudge.neocities.org) or run it locally on your own machine. Nudge is a static website so the main app runs completely offline and you don't need to make an account (there are two caveats which I'll explain below).
 
 You might say there are plenty of study apps out there already. Why Nudge? I started out making Nudge almost exclusively for myself because none of these other study planners/trackers worked well for me. Some were too limited, some too cluttered and confusing, and many sat behind paywalls charging ridiculous prices. I wanted something free, open source, and with a clean aesthetic. And I wanted it to include the kinds of features that would be both useful and delightful.
